@@ -178,6 +178,7 @@ const I = {
   bill:  (c,s=22)=><svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>,
   arrowup: (c,s=16)=><svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>,
   arrowdn: (c,s=16)=><svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>,
+  bell:    (c,s=22)=><svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>,
 };
 
 // ── LOGO SVG ─────────────────────────────────────────────────────────
@@ -208,6 +209,7 @@ function App() {
   const [cloudStatus, setCloudStatus] = useState('idle'); // idle|syncing|ok|error
   const [contas,   setContas]   = useState(()=>db.get('fp_contas',[]));
   const [alertKey, setAlertKey] = useState('');
+  const [livePedidosCount, setLivePedidosCount] = useState(0);
   const initDone = React.useRef(false);
 
   useEffect(()=>{ if(initDone.current) db.set('fp_trans',   trans);  }, [trans]);
@@ -374,6 +376,16 @@ function App() {
     }).catch(()=>{ initDone.current = true; setCloudStatus('error'); });
   }, []);
 
+  // Live orders count listener
+  useEffect(() => {
+    try {
+      const unsub = window.__fsdb.collection('fp_pedidos')
+        .where('status','==','novo')
+        .onSnapshot(snap => setLivePedidosCount(snap.size), ()=>{});
+      return unsub;
+    } catch(e) {}
+  }, []);
+
   // Auto-sync on startup if sheet ID already configured
   useEffect(() => { if (sheetId) syncFromSheets(sheetId); }, []);
 
@@ -384,16 +396,17 @@ function App() {
     return () => clearInterval(id);
   }, [sheetId]);
 
-  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, paidEvent, contas, addConta, pagarConta, delConta, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus };
+  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, paidEvent, contas, addConta, pagarConta, delConta, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus, livePedidosCount };
 
   const TABS = [
-    {id:'dashboard', lbl:'Início',   icon:I.home},
-    {id:'finance',   lbl:'Finanças', icon:I.cash},
-    {id:'orders',    lbl:'Pedidos',  icon:I.bag},
-    {id:'events',    lbl:'Eventos',  icon:I.cal},
-    {id:'contas',    lbl:'Contas',   icon:I.bill},
-    {id:'profits',   lbl:'Lucros',   icon:I.coin},
-    {id:'whatsapp',  lbl:'WhatsApp', icon:I.wa},
+    {id:'dashboard',   lbl:'Início',   icon:I.home},
+    {id:'finance',     lbl:'Finanças', icon:I.cash},
+    {id:'live_orders', lbl:'Ao Vivo',  icon:I.bell},
+    {id:'orders',      lbl:'Pedidos',  icon:I.bag},
+    {id:'events',      lbl:'Eventos',  icon:I.cal},
+    {id:'contas',      lbl:'Contas',   icon:I.bill},
+    {id:'profits',     lbl:'Lucros',   icon:I.coin},
+    {id:'whatsapp',    lbl:'WhatsApp', icon:I.wa},
   ];
 
   const headerAction = () => {
@@ -436,26 +449,30 @@ function App() {
 
       {/* ── CONTENT ── */}
       <div style={{padding:'16px 14px'}}>
-        {tab==='dashboard' && <Dashboard ctx={ctx}/>}
-        {tab==='finance'   && <Finance   ctx={ctx}/>}
-        {tab==='orders'    && <Orders    ctx={ctx}/>}
-        {tab==='events'    && <Events    ctx={ctx}/>}
-        {tab==='profits'   && <Lucros    ctx={ctx}/>}
-        {tab==='contas'    && <Contas    ctx={ctx}/>}
-        {tab==='whatsapp'  && <WhatsApp ctx={ctx}/>}
+        {tab==='dashboard'   && <Dashboard   ctx={ctx}/>}
+        {tab==='finance'     && <Finance     ctx={ctx}/>}
+        {tab==='live_orders' && <LiveOrders  ctx={ctx}/>}
+        {tab==='orders'      && <Orders      ctx={ctx}/>}
+        {tab==='events'      && <Events      ctx={ctx}/>}
+        {tab==='profits'     && <Lucros      ctx={ctx}/>}
+        {tab==='contas'      && <Contas      ctx={ctx}/>}
+        {tab==='whatsapp'    && <WhatsApp    ctx={ctx}/>}
       </div>
 
       {/* ── TAB BAR ── */}
       <div className="tabbar">
         {TABS.map(t=>{
-          const isContas = t.id==='contas';
-          const cVenc = isContas ? ctx.contas.filter(c=>!c.pago&&c.vencimento&&c.vencimento<today()).length : 0;
+          const isContas     = t.id==='contas';
+          const isLive       = t.id==='live_orders';
+          const cVenc        = isContas ? ctx.contas.filter(c=>!c.pago&&c.vencimento&&c.vencimento<today()).length : 0;
+          const liveBadge    = isLive   ? ctx.livePedidosCount : 0;
+          const badgeVal     = isContas ? cVenc : liveBadge;
           return (
             <div key={t.id} className="tab" onClick={()=>setTab(t.id)} style={{position:'relative'}}>
               {t.icon(tab===t.id ? C.red : '#bbb', 22)}
-              {isContas && cVenc>0 && (
+              {badgeVal>0 && (
                 <span style={{position:'absolute',top:2,right:14,background:'#b91c1c',color:'white',borderRadius:'50%',width:16,height:16,fontSize:9,fontWeight:900,display:'flex',alignItems:'center',justifyContent:'center',border:'2px solid var(--cream)'}}>
-                  {cVenc>9?'9+':cVenc}
+                  {badgeVal>9?'9+':badgeVal}
                 </span>
               )}
               <span className="tab-lbl" style={{color:tab===t.id?C.red:'#bbb'}}>{t.lbl}</span>
@@ -2364,6 +2381,143 @@ function ContaModal({ ctx, initTipo }) {
           Salvar Conta
         </button>
       </div>
+    </div>
+  );
+}
+
+// ── LIVE ORDERS ─────────────────────────────────────────────────────
+function LiveOrders({ ctx }) {
+  const [pedidos, setPedidos] = useState([]);
+  const prevNovos = React.useRef(-1);
+
+  useEffect(() => {
+    let unsub;
+    try {
+      unsub = window.__fsdb.collection('fp_pedidos')
+        .orderBy('criadoEm','desc').limit(60)
+        .onSnapshot(snap => {
+          const data = snap.docs.map(d => ({id:d.id,...d.data()}));
+          setPedidos(data);
+          const novos = data.filter(p=>p.status==='novo').length;
+          if (prevNovos.current >= 0 && novos > prevNovos.current) {
+            try {
+              const ac = new (window.AudioContext||window.webkitAudioContext)();
+              [0,150,300].forEach(delay => setTimeout(()=>{
+                const o=ac.createOscillator(), g=ac.createGain();
+                o.connect(g); g.connect(ac.destination);
+                o.frequency.value=880; g.gain.setValueAtTime(0.25,ac.currentTime);
+                g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.3);
+                o.start(); o.stop(ac.currentTime+0.3);
+              }, delay));
+            } catch(e) {}
+          }
+          prevNovos.current = novos;
+        }, ()=>{});
+    } catch(e) {}
+    return ()=>{ try { unsub&&unsub(); } catch(e) {} };
+  }, []);
+
+  const updStatus = (id, status) => {
+    try { window.__fsdb.collection('fp_pedidos').doc(id).update({status}); } catch(e) {}
+  };
+
+  const fmtTs = ts => {
+    if (!ts) return '—';
+    try { const d=ts.toDate?ts.toDate():new Date(ts); return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); } catch(e){return '—';}
+  };
+
+  const STATUS_NEXT  = {
+    novo:    {label:'✅ Aceitar',       next:'aceito',   color:'#2a7d4f'},
+    aceito:  {label:'👨‍🍳 Em Preparo',  next:'preparo',  color:'#1d4ed8'},
+    preparo: {label:'🔔 Pronto!',       next:'pronto',   color:'#b45309'},
+    pronto:  {label:'✔ Entregue',       next:'entregue', color:'#6b5744'},
+  };
+  const STATUS_BADGE = {
+    novo:     {bg:'#fef3c7',tc:'#b45309', label:'🆕 Novo'},
+    aceito:   {bg:'#eff6ff',tc:'#1d4ed8', label:'✅ Aceito'},
+    preparo:  {bg:'#f5f3ff',tc:'#7c3aed', label:'👨‍🍳 Preparo'},
+    pronto:   {bg:'#fef9ee',tc:'#d97706', label:'🔔 Pronto'},
+    entregue: {bg:'#f0fdf4',tc:'#15803d', label:'✔ Entregue'},
+  };
+
+  const ativos    = pedidos.filter(p=>p.status!=='entregue');
+  const entregues = pedidos.filter(p=>p.status==='entregue').slice(0,10);
+  const novosQty  = pedidos.filter(p=>p.status==='novo').length;
+
+  if (pedidos.length===0) return (
+    <div style={{textAlign:'center',padding:'60px 20px',color:C.text2}}>
+      <div style={{fontSize:52,marginBottom:16}}>📡</div>
+      <div style={{fontSize:18,fontWeight:700,marginBottom:8,color:C.text}}>Aguardando pedidos</div>
+      <div style={{fontSize:14}}>Os pedidos feitos pelo cardápio aparecerão aqui em tempo real, sem precisar atualizar a página.</div>
+    </div>
+  );
+
+  return (
+    <div>
+      {novosQty>0 && (
+        <div style={{background:'#fef3c7',border:'1px solid #fcd34d',borderRadius:14,padding:'12px 16px',marginBottom:16,display:'flex',alignItems:'center',gap:10}}>
+          <span style={{fontSize:22}}>🔔</span>
+          <span style={{fontSize:14,fontWeight:700,color:'#b45309'}}>{novosQty} pedido{novosQty>1?'s':''} novo{novosQty>1?'s':''} aguardando!</span>
+        </div>
+      )}
+
+      {ativos.map(p => {
+        const badge = STATUS_BADGE[p.status]||STATUS_BADGE.novo;
+        const nxt   = STATUS_NEXT[p.status];
+        return (
+          <div key={p.id} className="card" style={{marginBottom:12}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:15}}>{p.cliente||'Cliente'}</div>
+                <div style={{fontSize:12,color:C.text2}}>{fmtTs(p.criadoEm)} · {p.local==='delivery'?'🛵 Delivery':'🏪 Retirada'}</div>
+              </div>
+              <span style={{background:badge.bg,color:badge.tc,padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:700,flexShrink:0}}>{badge.label}</span>
+            </div>
+
+            <div style={{borderTop:`1px solid ${C.border}`,paddingTop:8,marginBottom:8}}>
+              {(p.itens||[]).map((it,i)=>(
+                <div key={i} style={{fontSize:13,color:C.text,padding:'2px 0'}}>
+                  {it.qty}x {it.nome} — {fmtBRL(it.qty*it.preco)}
+                </div>
+              ))}
+            </div>
+
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+              <span style={{fontSize:12,color:C.text2}}>{p.pagamento==='pix'?'💸 Pix':'💳 Cartão'} · {p.data} {p.horario}</span>
+              <span style={{fontSize:16,fontWeight:800,color:C.red}}>{fmtBRL(p.total)}</span>
+            </div>
+
+            {p.local==='delivery'&&p.endereco&&(
+              <div style={{fontSize:12,color:C.text2,marginBottom:6}}>📍 {p.endereco}</div>
+            )}
+            {p.obs&&(
+              <div style={{fontSize:12,color:'#b45309',background:'#fef9ee',borderRadius:8,padding:'6px 10px',marginBottom:8}}>📝 {p.obs}</div>
+            )}
+
+            {nxt && (
+              <button onClick={()=>updStatus(p.id,nxt.next)}
+                style={{width:'100%',background:nxt.color,color:'white',border:'none',borderRadius:12,padding:11,fontWeight:700,fontSize:14,cursor:'pointer',fontFamily:'inherit',marginTop:4}}>
+                {nxt.label}
+              </button>
+            )}
+          </div>
+        );
+      })}
+
+      {entregues.length>0&&(
+        <div style={{marginTop:16}}>
+          <div className="section-label">Entregues recentes</div>
+          {entregues.map(p=>(
+            <div key={p.id} style={{padding:'10px 14px',background:'white',borderRadius:12,marginBottom:8,opacity:0.65,border:`1px solid ${C.border}`}}>
+              <div style={{display:'flex',justifyContent:'space-between'}}>
+                <span style={{fontSize:13,fontWeight:600}}>{p.cliente||'Cliente'}</span>
+                <span style={{fontSize:13,color:C.text2}}>{fmtBRL(p.total)}</span>
+              </div>
+              <div style={{fontSize:12,color:C.text2}}>{fmtTs(p.criadoEm)} · {(p.itens||[]).length} item(ns)</div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
