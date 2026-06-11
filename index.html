@@ -2358,5 +2358,18 @@ function ContaModal({ ctx, initTipo }) {
           value={notaFiscal} onChange={e=>setNotaFiscal(e.target.value)} style={{marginBottom:22}}/>
 
         <button onClick={save} disabled={!ok}
-          style={{width:'100%',background:ok?`linear-gradient(135deg,${accent},${tipo==='receber'?'#166534':'#991b1b'})`:'#e5e7eb',
-            border:'none',borderRadius:14,padding:15,color:ok?'white':'#9ca3af',f
+          style={{width:'100%',background:ok?'linear-gradient(135deg,'+accent+','+(tipo==='receber'?'#166534':'#991b1b')+')':'#e5e7eb',
+            border:'none',borderRadius:14,padding:15,color:ok?'white':'#9ca3af',fontWeight:800,
+            cursor:ok?'pointer':'default',fontSize:15,fontFamily:'inherit'}}>
+          Salvar Conta
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App/>);
+</script>
+</body>
+</html>
