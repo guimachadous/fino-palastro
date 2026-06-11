@@ -2328,3 +2328,46 @@ function ContaModal({ ctx, initTipo }) {
           <div>
             <label className="label">Valor (R$) *</label>
             <input className="input" type="number" inputMode="decimal" placeholder="0,00"
+            value={valor} onChange={e=>setValor(e.target.value)}/>
+          </div>
+          <div>
+            <label className="label">Vencimento</label>
+            <input className="input" type="date" value={vencimento} onChange={e=>setVencimento(e.target.value)}/>
+          </div>
+        </div>
+
+        <label className="label">Categoria</label>
+        <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:14}}>
+          {cats.map(c=>(
+            <button key={c} className="chip" onClick={()=>setCategoria(c)}
+              style={{background:categoria===c?accent:'white',color:categoria===c?'white':C.text2,
+                border:`1px solid ${categoria===c?accent:C.border}`,fontSize:12,padding:'6px 12px'}}>
+              {c}
+            </button>
+          ))}
+        </div>
+
+        <label className="label">Cliente / Fornecedor (opcional)</label>
+        <input className="input" placeholder="Nome do cliente ou fornecedor"
+          value={cliente} onChange={e=>setCliente(e.target.value)} style={{marginBottom:14}}/>
+
+        <label className="label">Nota Fiscal (opcional)</label>
+        <input className="input" placeholder="Número da NF"
+          value={notaFiscal} onChange={e=>setNotaFiscal(e.target.value)} style={{marginBottom:22}}/>
+
+        <button onClick={save} disabled={!ok}
+          style={{width:'100%',background:ok?`linear-gradient(135deg,${accent},${tipo==='receber'?'#166534':'#991b1b'})`:'#e5e7eb',
+            border:'none',borderRadius:14,padding:15,color:ok?'white':'#9ca3af',fontWeight:800,
+            cursor:ok?'pointer':'default',fontSize:15,fontFamily:'inherit'}}>
+          Salvar Conta
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App/>);
+</script>
+</body>
+</html>
