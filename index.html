@@ -208,14 +208,15 @@ function App() {
   const [cloudStatus, setCloudStatus] = useState('idle'); // idle|syncing|ok|error
   const [contas,   setContas]   = useState(()=>db.get('fp_contas',[]));
   const [alertKey, setAlertKey] = useState('');
+  const initDone = React.useRef(false);
 
-  useEffect(()=>db.set('fp_trans',  trans),   [trans]);
-  useEffect(()=>db.set('fp_orders', orders),  [orders]);
-  useEffect(()=>db.set('fp_events', events),  [events]);
-  useEffect(()=>db.set('fp_sheet_id',  sheetId),  [sheetId]);
-  useEffect(()=>db.set('fp_products',  products), [products]);
-  useEffect(()=>db.set('fp_opening_bal',openBal), [openBal]);
-  useEffect(()=>db.set('fp_contas',  contas),  [contas]);
+  useEffect(()=>{ if(initDone.current) db.set('fp_trans',   trans);  }, [trans]);
+  useEffect(()=>{ if(initDone.current) db.set('fp_orders',  orders); }, [orders]);
+  useEffect(()=>{ if(initDone.current) db.set('fp_events',  events); }, [events]);
+  useEffect(()=>{ if(initDone.current) db.set('fp_sheet_id', sheetId); }, [sheetId]);
+  useEffect(()=>{ if(initDone.current) db.set('fp_products', products); }, [products]);
+  useEffect(()=>{ if(initDone.current) db.set('fp_opening_bal', openBal); }, [openBal]);
+  useEffect(()=>{ if(initDone.current) db.set('fp_contas',  contas); }, [contas]);
 
   const addTrans  = t => setTrans(p  => [{...t,  id:genId()}, ...p]);
   const addOrder  = o => {
@@ -361,6 +362,7 @@ function App() {
         .then(d => ({k, v: d.exists ? d.data()?.data : undefined}))
         .catch(() => ({k, v:undefined}))
     )).then(res => {
+      initDone.current = true;
       res.forEach(({k,v}) => {
         if (v===undefined) return;
         try { localStorage.setItem(k,JSON.stringify(v)); } catch {}
@@ -369,7 +371,7 @@ function App() {
       });
       setCloudStatus('ok');
       setTimeout(()=>setCloudStatus('idle'), 3000);
-    }).catch(()=>setCloudStatus('error'));
+    }).catch(()=>{ initDone.current = true; setCloudStatus('error'); });
   }, []);
 
   // Auto-sync on startup if sheet ID already configured
@@ -2357,17 +2359,4 @@ function ContaModal({ ctx, initTipo }) {
 
         <button onClick={save} disabled={!ok}
           style={{width:'100%',background:ok?`linear-gradient(135deg,${accent},${tipo==='receber'?'#166534':'#991b1b'})`:'#e5e7eb',
-            border:'none',borderRadius:14,padding:15,color:ok?'white':'#9ca3af',fontWeight:800,
-            cursor:ok?'pointer':'default',fontSize:15,fontFamily:'inherit'}}>
-          Salvar Conta
-        </button>
-      </div>
-    </div>
-  );
-}
-
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<App/>);
-</script>
-</body>
-</html>
+            border:'none',borderRadius:14,padding:15,color:ok?'white':'#9ca3af',f
