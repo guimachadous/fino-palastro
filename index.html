@@ -147,6 +147,24 @@ const PRODUCTS_DEFAULT = [
 
 const CATS_IN  = ['Venda Congelada','Evento ao Vivo','Evento Express','Outros'];
 const CATS_OUT = ['Insumos/Ingredientes','Embalagens','Despesa Fixa','Despesa Variável','Marketing','Outros'];
+const CATS_P_DEFAULT = ['Fornecedor','Ingredientes','Embalagem','Aluguel','Serviço','Outros'];
+
+// Lista de pizzas do cardápio — usada para controle de estoque
+const PIZZAS_ESTOQUE = [
+  {id:'pe_g1',nome:'Margherita Especial',             cat:'grande'},
+  {id:'pe_g2',nome:'Calabresa com Gorgonzola',         cat:'grande'},
+  {id:'pe_g3',nome:'Linguica Blumenau com Gorgonzola', cat:'grande'},
+  {id:'pe_g4',nome:'Lombinho com Catupiry e Alho Poro',cat:'grande'},
+  {id:'pe_g5',nome:'Pepperoni',                        cat:'grande'},
+  {id:'pe_g6',nome:'4 Formaggi',                       cat:'grande'},
+  {id:'pe_g7',nome:'File com Cheddar',                 cat:'grande'},
+  {id:'pe_g8',nome:'File com Gorgonzola',              cat:'grande'},
+  {id:'pe_g9',nome:'Brie com Geleia de Pimenta',       cat:'grande'},
+  {id:'pe_m1',nome:'Mini Margherita Especial',              cat:'mini'},
+  {id:'pe_m2',nome:'Mini Lombinho com Catupiry e Alho Poro',cat:'mini'},
+  {id:'pe_m3',nome:'Mini Brie com Geleia de Pimenta',       cat:'mini'},
+  {id:'pe_m4',nome:'Mini Calabresa com Gorgonzola',         cat:'mini'},
+];
 const PAYMENTS = ['Pix','Dinheiro','Cartão Débito','Cartão Crédito'];
 
 const S_CLR = {
@@ -179,6 +197,8 @@ const I = {
   arrowup: (c,s=16)=><svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>,
   arrowdn: (c,s=16)=><svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>,
   bell:    (c,s=22)=><svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>,
+  box:     (c,s=22)=><svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>,
+  truck:   (c,s=22)=><svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>,
 };
 
 // ── LOGO SVG ─────────────────────────────────────────────────────────
@@ -207,7 +227,11 @@ function App() {
   const [syncMsg,  setSyncMsg]  = useState(null);
   const [showCfg,  setShowCfg]  = useState(false);
   const [cloudStatus, setCloudStatus] = useState('idle'); // idle|syncing|ok|error
-  const [contas,   setContas]   = useState(()=>db.get('fp_contas',[]));
+  const [contas,        setContas]        = useState(()=>db.get('fp_contas',[]));
+  const [catsPagar,     setCatsPagar]     = useState(()=>db.get('fp_cats_pagar', CATS_P_DEFAULT));
+  const [fornecedores,  setFornecedores]  = useState(()=>db.get('fp_fornecedores', []));
+  const [estoqueData,   setEstoqueData]   = useState(()=>db.get('fp_estoque', {}));
+  const [estoqueHist,   setEstoqueHist]   = useState(()=>db.get('fp_estoque_hist', []));
   const [alertKey, setAlertKey] = useState('');
   const [newCardapioCount, setNewCardapioCount] = useState(0);
   const initDone = React.useRef(false);
@@ -219,7 +243,11 @@ function App() {
   useEffect(()=>{ if(initDone.current) db.set('fp_sheet_id', sheetId); }, [sheetId]);
   useEffect(()=>{ if(initDone.current) db.set('fp_products', products); }, [products]);
   useEffect(()=>{ if(initDone.current) db.set('fp_opening_bal', openBal); }, [openBal]);
-  useEffect(()=>{ if(initDone.current) db.set('fp_contas',  contas); }, [contas]);
+  useEffect(()=>{ if(initDone.current) db.set('fp_contas',       contas);       }, [contas]);
+  useEffect(()=>{ if(initDone.current) db.set('fp_cats_pagar',   catsPagar);    }, [catsPagar]);
+  useEffect(()=>{ if(initDone.current) db.set('fp_fornecedores', fornecedores); }, [fornecedores]);
+  useEffect(()=>{ if(initDone.current) db.set('fp_estoque',      estoqueData);  }, [estoqueData]);
+  useEffect(()=>{ if(initDone.current) db.set('fp_estoque_hist', estoqueHist);  }, [estoqueHist]);
 
   const addTrans  = t => setTrans(p  => [{...t,  id:genId()}, ...p]);
   const addOrder  = o => {
@@ -245,6 +273,38 @@ function App() {
 
   const open  = (m,d=null)=>{ setModal(m); setMData(d); };
   const close = ()=>{ setModal(null); setMData(null); };
+
+  // Fornecedores
+  const addFornecedor = f => setFornecedores(p=>[{...f,id:genId(),criadoEm:today()},...p]);
+  const updFornecedor = (id,d) => setFornecedores(p=>p.map(f=>f.id===id?{...f,...d}:f));
+  const delFornecedor = id => setFornecedores(p=>p.filter(f=>f.id!==id));
+
+  // Estoque — ajuste manual ou automático
+  const ajustarEstoque = (nome, delta, motivo, tipo) => {
+    setEstoqueData(prev => {
+      const atual = prev[nome] !== undefined ? prev[nome] : null;
+      const novoVal = atual === null ? Math.max(0, delta) : Math.max(0, atual + delta);
+      const next = {...prev, [nome]: novoVal};
+      // Sincronizar com Firestore para o cardápio ler
+      try { window.__fsdb.collection('fp_data').doc('fp_estoque_cardapio').set({data:next,ts:Date.now()}).catch(()=>{}); } catch(e){}
+      return next;
+    });
+    setEstoqueHist(p=>[{id:genId(),nome,tipo,quantidade:Math.abs(delta),motivo,data:today()},...p].slice(0,500));
+  };
+
+  const debitarEstoquePedido = (itens) => {
+    setEstoqueData(prev => {
+      const next = {...prev};
+      itens.forEach(item => {
+        const nome = item.productName||item.nome||'';
+        if (next[nome] !== undefined && next[nome] !== null) {
+          next[nome] = Math.max(0, next[nome] - (item.qty||1));
+        }
+      });
+      try { window.__fsdb.collection('fp_data').doc('fp_estoque_cardapio').set({data:next,ts:Date.now()}).catch(()=>{}); } catch(e){}
+      return next;
+    });
+  };
 
   const paidOrder = o => {
     const pd = today();
@@ -431,6 +491,7 @@ function App() {
               fromCardapio: true
             };
             setOrders(p => [newOrder,...p]);
+            debitarEstoquePedido(orderItems);
             window.__fsdb.collection('fp_pedidos').doc(docId).update({status:'importado'}).catch(()=>{});
             added++;
           });
@@ -450,7 +511,7 @@ function App() {
     return () => clearInterval(id);
   }, [sheetId]);
 
-  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, paidEvent, contas, addConta, pagarConta, delConta, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus, newCardapioCount };
+  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, paidEvent, contas, addConta, pagarConta, delConta, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus, newCardapioCount, catsPagar, setCatsPagar, fornecedores, addFornecedor, updFornecedor, delFornecedor, estoqueData, estoqueHist, ajustarEstoque };
 
   const TABS = [
     {id:'dashboard',   lbl:'Início',   icon:I.home},
@@ -458,6 +519,7 @@ function App() {
     {id:'orders',      lbl:'Pedidos',  icon:I.bag},
     {id:'events',      lbl:'Eventos',  icon:I.cal},
     {id:'contas',      lbl:'Contas',   icon:I.bill},
+    {id:'estoque',     lbl:'Estoque',  icon:I.box},
     {id:'profits',     lbl:'Lucros',   icon:I.coin},
     {id:'whatsapp',    lbl:'WhatsApp', icon:I.wa},
   ];
@@ -508,6 +570,7 @@ function App() {
         {tab==='events'      && <Events      ctx={ctx}/>}
         {tab==='profits'     && <Lucros      ctx={ctx}/>}
         {tab==='contas'      && <Contas      ctx={ctx}/>}
+        {tab==='estoque'     && <Estoque     ctx={ctx}/>}
         {tab==='whatsapp'    && <WhatsApp    ctx={ctx}/>}
       </div>
 
@@ -1738,9 +1801,11 @@ function RelatoriosView({ ctx }) {
   ctx.trans.forEach(t=>{ if(t.type==='entrada') catRev[t.category]=(catRev[t.category]||0)+t.amount; });
   const maxRev = Math.max(...Object.values(catRev), 1);
 
-  const validOrds = ctx.orders.filter(o=>o.total>0);
+  const cancelledOrds = ctx.orders.filter(o=>o.status==='cancelled'||o.status==='cancelado');
+  const activeOrds    = ctx.orders.filter(o=>o.status!=='cancelled'&&o.status!=='cancelado');
+  const validOrds = activeOrds.filter(o=>o.total>0);
   const avgOrd = validOrds.length ? validOrds.reduce((s,o)=>s+o.total,0)/validOrds.length : 0;
-  const delivOrd = ctx.orders.filter(o=>o.status==='delivered').length;
+  const delivOrd = activeOrds.filter(o=>o.status==='delivered').length;
 
   const validEvts = ctx.events.filter(e=>e.proposedValue>0);
   const avgEvt = validEvts.length ? validEvts.reduce((s,e)=>s+e.proposedValue,0)/validEvts.length : 0;
@@ -1761,7 +1826,7 @@ function RelatoriosView({ ctx }) {
   const maxMo = Math.max(...months.map(m=>m.inc), 1);
 
   const prodCnt = {};
-  ctx.orders.forEach(o=>{ if(o.items) o.items.forEach(i=>{ prodCnt[i.productName]=(prodCnt[i.productName]||0)+i.qty; }); });
+  activeOrds.forEach(o=>{ if(o.items) o.items.forEach(i=>{ prodCnt[i.productName]=(prodCnt[i.productName]||0)+i.qty; }); });
   const topProds = Object.entries(prodCnt).sort((a,b)=>b[1]-a[1]).slice(0,5);
 
   const KPI = ({lbl,val,sub,c}) => (
@@ -1792,9 +1857,10 @@ function RelatoriosView({ ctx }) {
         </div>
       </div>
 
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
-        <KPI lbl="Total Pedidos"  val={ctx.orders.length} sub={`${delivOrd} entregues`}/>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:10}}>
+        <KPI lbl="Total Pedidos"  val={activeOrds.length} sub={`${delivOrd} entregues`}/>
         <KPI lbl="Total Eventos"  val={ctx.events.length} sub={`${realEvts} realizados`}/>
+        <KPI lbl="Cancelados" val={cancelledOrds.length} c={C.red}/>
       </div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:14}}>
         <KPI lbl="Ticket Medio Pedido" val={fmtBRL(avgOrd)} c={C.green}/>
@@ -2354,12 +2420,28 @@ function ContaModal({ ctx, initTipo }) {
   const [categoria,  setCategoria]  = useState('');
   const [cliente,    setCliente]    = useState('');
   const [notaFiscal, setNotaFiscal] = useState('');
+  const [novaCat,    setNovaCat]    = useState('');
+  const [addingCat,  setAddingCat]  = useState(false);
 
-  const CATS_P = ['Fornecedor','Ingredientes','Embalagem','Aluguel','Serviço','Outros'];
   const CATS_R = ['Pedido','Evento','Serviço','Outros'];
-  const cats   = tipo==='pagar' ? CATS_P : CATS_R;
+  const cats   = tipo==='pagar' ? ctx.catsPagar : CATS_R;
 
   const ok = descricao.trim() && parseFloat(valor.replace(',','.'))>0;
+
+  const addCat = () => {
+    const c = novaCat.trim();
+    if (!c || cats.includes(c)) return;
+    if (tipo==='pagar') ctx.setCatsPagar(p=>[...p, c]);
+    setCategoria(c);
+    setNovaCat('');
+    setAddingCat(false);
+  };
+
+  const removeCat = (cat) => {
+    if (CATS_P_DEFAULT.includes(cat)) return; // não remove padrão
+    ctx.setCatsPagar(p=>p.filter(c=>c!==cat));
+    if (categoria===cat) setCategoria('');
+  };
 
   const save = () => {
     if (!ok) return;
@@ -2373,6 +2455,7 @@ function ContaModal({ ctx, initTipo }) {
   };
 
   const accent = tipo==='receber' ? C.green : C.red;
+  const fornNomes = (ctx.fornecedores||[]).map(f=>f.nome);
 
   return (
     <div className="overlay" onClick={close}>
@@ -2407,20 +2490,37 @@ function ContaModal({ ctx, initTipo }) {
           </div>
         </div>
 
-        <label className="label">Categoria</label>
+        <label className="label" style={{marginBottom:6}}>Categoria
+          {tipo==='pagar'&&<button onClick={()=>setAddingCat(v=>!v)} style={{marginLeft:8,fontSize:11,background:'transparent',border:`1px solid ${C.border}`,borderRadius:8,padding:'2px 8px',cursor:'pointer',color:C.text2}}>{addingCat?'Cancelar':'+ Nova'}</button>}
+        </label>
+        {addingCat&&(
+          <div style={{display:'flex',gap:6,marginBottom:8}}>
+            <input className="input" placeholder="Nome da categoria" value={novaCat} onChange={e=>setNovaCat(e.target.value)}
+              onKeyDown={e=>e.key==='Enter'&&addCat()} style={{flex:1,marginBottom:0}}/>
+            <button onClick={addCat} style={{background:accent,border:'none',borderRadius:10,color:'white',padding:'0 14px',fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>OK</button>
+          </div>
+        )}
         <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:14}}>
           {cats.map(c=>(
-            <button key={c} className="chip" onClick={()=>setCategoria(c)}
-              style={{background:categoria===c?accent:'white',color:categoria===c?'white':C.text2,
-                border:`1px solid ${categoria===c?accent:C.border}`,fontSize:12,padding:'6px 12px'}}>
-              {c}
-            </button>
+            <div key={c} style={{display:'flex',alignItems:'center',gap:2}}>
+              <button className="chip" onClick={()=>setCategoria(c)}
+                style={{background:categoria===c?accent:'white',color:categoria===c?'white':C.text2,
+                  border:`1px solid ${categoria===c?accent:C.border}`,fontSize:12,padding:'6px 12px'}}>
+                {c}
+              </button>
+              {tipo==='pagar'&&!CATS_P_DEFAULT.includes(c)&&(
+                <button onClick={()=>removeCat(c)} style={{background:'transparent',border:'none',cursor:'pointer',color:'#ccc',fontSize:14,padding:'0 2px',lineHeight:1}}>×</button>
+              )}
+            </div>
           ))}
         </div>
 
-        <label className="label">Cliente / Fornecedor (opcional)</label>
-        <input className="input" placeholder="Nome do cliente ou fornecedor"
+        <label className="label">Fornecedor / Cliente (opcional)</label>
+        <input className="input" placeholder="Nome ou selecione cadastrado" list="lista-fornec"
           value={cliente} onChange={e=>setCliente(e.target.value)} style={{marginBottom:14}}/>
+        <datalist id="lista-fornec">
+          {fornNomes.map(n=><option key={n} value={n}/>)}
+        </datalist>
 
         <label className="label">Nota Fiscal (opcional)</label>
         <input className="input" placeholder="Número da NF"
@@ -2433,6 +2533,197 @@ function ContaModal({ ctx, initTipo }) {
           Salvar Conta
         </button>
       </div>
+    </div>
+  );
+}
+
+// ── ESTOQUE ─────────────────────────────────────────────────────────────────
+function Estoque({ ctx }) {
+  const [subTab, setSubTab] = useState('estoque'); // 'estoque'|'fornecedores'|'historico'
+  const [ajuste, setAjuste] = useState(null); // { nome, cat } da pizza selecionada
+  const [ajQtd,  setAjQtd]  = useState('');
+  const [ajTipo, setAjTipo] = useState('entrada');
+  const [ajMotivo, setAjMotivo] = useState('');
+  // fornecedor form
+  const [fNome,   setFNome]   = useState('');
+  const [fContato,setFContato]= useState('');
+  const [fTipo,   setFTipo]   = useState('fornecedor');
+  const [fEdit,   setFEdit]   = useState(null);
+
+  const salvarAjuste = () => {
+    const qtd = parseInt(ajQtd);
+    if (!ajuste||!qtd||!ajMotivo.trim()) return;
+    const delta = ajTipo==='entrada' ? qtd : -qtd;
+    ctx.ajustarEstoque(ajuste.nome, delta, ajMotivo.trim(), ajTipo);
+    setAjuste(null); setAjQtd(''); setAjMotivo('');
+  };
+
+  const salvarForn = () => {
+    const nome = fNome.trim();
+    if (!nome) return;
+    if (fEdit) {
+      ctx.updFornecedor(fEdit.id, {nome, contato:fContato.trim(), tipo:fTipo});
+      setFEdit(null);
+    } else {
+      ctx.addFornecedor({nome, contato:fContato.trim(), tipo:fTipo});
+    }
+    setFNome(''); setFContato(''); setFTipo('fornecedor');
+  };
+
+  const grandes = PIZZAS_ESTOQUE.filter(p=>p.cat==='grande');
+  const minis   = PIZZAS_ESTOQUE.filter(p=>p.cat==='mini');
+
+  const StockRow = ({p}) => {
+    const qtd = ctx.estoqueData[p.nome];
+    const zerado = qtd !== undefined && qtd !== null && qtd === 0;
+    const semControle = qtd === undefined || qtd === null;
+    return (
+      <div onClick={()=>{setAjuste(p);setAjQtd('');setAjMotivo('');setAjTipo('entrada');}}
+        style={{display:'flex',justifyContent:'space-between',alignItems:'center',
+          padding:'12px 14px',background:zerado?'#fef2f2':'white',borderRadius:12,
+          marginBottom:6,border:`1px solid ${zerado?'#fecaca':C.border}`,cursor:'pointer'}}>
+        <div>
+          <div style={{fontWeight:600,fontSize:14,color:zerado?C.red:C.text}}>{p.nome}</div>
+          {zerado&&<div style={{fontSize:11,color:C.red,marginTop:2}}>⚠️ Sem estoque — bloqueado no cardápio</div>}
+          {semControle&&<div style={{fontSize:11,color:C.text2,marginTop:2}}>Sem controle definido</div>}
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <div style={{fontWeight:900,fontSize:18,color:zerado?C.red:semControle?C.text2:C.green,minWidth:36,textAlign:'right'}}>
+            {semControle?'—':qtd}
+          </div>
+          <div style={{fontSize:11,color:C.text2}}>un</div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      {/* Sub-tabs */}
+      <div style={{display:'flex',gap:6,marginBottom:16}}>
+        {[['estoque','📦 Estoque'],['fornecedores','🚛 Fornecedores'],['historico','📋 Histórico']].map(([k,l])=>(
+          <button key={k} className="chip" onClick={()=>setSubTab(k)}
+            style={{flex:1,justifyContent:'center',fontSize:12,fontWeight:700,
+              background:subTab===k?C.red:'white',color:subTab===k?'white':C.text2,
+              border:`1px solid ${subTab===k?C.red:C.border}`}}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {subTab==='estoque'&&(
+        <div>
+          <div style={{fontSize:12,color:C.text2,marginBottom:12}}>Toque em um sabor para ajustar o estoque. Sabores com estoque zero ficam bloqueados no cardápio online.</div>
+          <div className="section-label" style={{marginBottom:8}}>Pizzas Grandes</div>
+          {grandes.map(p=><StockRow key={p.id} p={p}/>)}
+          <div className="section-label" style={{marginTop:14,marginBottom:8}}>Mini Pizzas</div>
+          {minis.map(p=><StockRow key={p.id} p={p}/>)}
+        </div>
+      )}
+
+      {subTab==='fornecedores'&&(
+        <div>
+          <div className="card" style={{marginBottom:14}}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:12}}>{fEdit?'Editar Fornecedor':'Novo Fornecedor'}</div>
+            <label className="label">Nome *</label>
+            <input className="input" placeholder="Nome do fornecedor" value={fNome} onChange={e=>setFNome(e.target.value)} style={{marginBottom:10}}/>
+            <label className="label">Contato (tel / e-mail)</label>
+            <input className="input" placeholder="(48) 99999-9999" value={fContato} onChange={e=>setFContato(e.target.value)} style={{marginBottom:10}}/>
+            <label className="label">Tipo</label>
+            <div style={{display:'flex',gap:6,marginBottom:12}}>
+              {[['fornecedor','Fornecedor'],['mp','Matéria Prima'],['ambos','Ambos']].map(([k,l])=>(
+                <button key={k} className="chip" onClick={()=>setFTipo(k)}
+                  style={{background:fTipo===k?C.red:'white',color:fTipo===k?'white':C.text2,
+                    border:`1px solid ${fTipo===k?C.red:C.border}`,fontSize:12,padding:'6px 12px'}}>
+                  {l}
+                </button>
+              ))}
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={salvarForn} disabled={!fNome.trim()}
+                style={{flex:1,background:fNome.trim()?C.red:'#e5e7eb',border:'none',borderRadius:12,padding:12,color:fNome.trim()?'white':'#9ca3af',fontWeight:700,cursor:fNome.trim()?'pointer':'default',fontFamily:'inherit'}}>
+                {fEdit?'Salvar':'Cadastrar'}
+              </button>
+              {fEdit&&<button onClick={()=>{setFEdit(null);setFNome('');setFContato('');setFTipo('fornecedor');}}
+                style={{background:'#f0ebe4',border:'none',borderRadius:12,padding:'12px 16px',cursor:'pointer',fontFamily:'inherit'}}>
+                Cancelar
+              </button>}
+            </div>
+          </div>
+
+          {ctx.fornecedores.length===0&&(
+            <div style={{textAlign:'center',padding:'24px 0',color:C.text2,fontSize:13}}>Nenhum fornecedor cadastrado.</div>
+          )}
+          {ctx.fornecedores.map(f=>(
+            <div key={f.id} className="card" style={{marginBottom:8,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:14}}>{f.nome}</div>
+                {f.contato&&<div style={{fontSize:12,color:C.text2,marginTop:2}}>{f.contato}</div>}
+                <span className="badge" style={{marginTop:4,background:'#f0f4ff',color:C.blue,fontSize:10}}>{f.tipo==='mp'?'Matéria Prima':f.tipo==='ambos'?'Forn. + MP':'Fornecedor'}</span>
+              </div>
+              <div style={{display:'flex',gap:6}}>
+                <button onClick={()=>{setFEdit(f);setFNome(f.nome);setFContato(f.contato||'');setFTipo(f.tipo||'fornecedor');}}
+                  style={{background:'#f0ebe4',border:'none',borderRadius:10,padding:'6px 12px',cursor:'pointer',fontSize:12,fontFamily:'inherit'}}>Editar</button>
+                <button onClick={()=>ctx.delFornecedor(f.id)}
+                  style={{background:'transparent',border:'none',cursor:'pointer',padding:6}}>{I.trash('#ccc',13)}</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {subTab==='historico'&&(
+        <div>
+          {ctx.estoqueHist.length===0&&(
+            <div style={{textAlign:'center',padding:'32px 0',color:C.text2,fontSize:13}}>Nenhum ajuste registrado ainda.</div>
+          )}
+          {ctx.estoqueHist.slice(0,100).map(h=>(
+            <div key={h.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',
+              padding:'10px 14px',background:'white',borderRadius:12,marginBottom:6,border:`1px solid ${C.border}`}}>
+              <div>
+                <div style={{fontWeight:600,fontSize:13,color:C.text}}>{h.nome}</div>
+                <div style={{fontSize:11,color:C.text2,marginTop:2}}>{h.motivo} · {fmtDate(h.data)}</div>
+              </div>
+              <div style={{fontWeight:800,fontSize:15,color:h.tipo==='entrada'?C.green:C.red}}>
+                {h.tipo==='entrada'?'+':'-'}{h.quantidade}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Modal de ajuste de estoque */}
+      {ajuste&&(
+        <div className="overlay" onClick={()=>setAjuste(null)}>
+          <div className="sheet" onClick={e=>e.stopPropagation()}>
+            <div className="sheet-handle"/>
+            <div style={{fontWeight:800,fontSize:17,marginBottom:4}}>Ajuste de Estoque</div>
+            <div style={{fontSize:13,color:C.text2,marginBottom:16}}>{ajuste.nome}</div>
+
+            <div style={{display:'flex',gap:8,marginBottom:14}}>
+              {[['entrada','📥 Entrada'],['saida','📤 Saída']].map(([k,l])=>(
+                <button key={k} className="chip" onClick={()=>setAjTipo(k)}
+                  style={{flex:1,justifyContent:'center',background:ajTipo===k?(k==='entrada'?C.green:C.red):'white',
+                    color:ajTipo===k?'white':C.text2,border:`1px solid ${ajTipo===k?(k==='entrada'?C.green:C.red):C.border}`}}>
+                  {l}
+                </button>
+              ))}
+            </div>
+            <label className="label">Quantidade *</label>
+            <input className="input" type="number" inputMode="numeric" placeholder="Ex: 10"
+              value={ajQtd} onChange={e=>setAjQtd(e.target.value)} style={{marginBottom:12}}/>
+            <label className="label">Motivo *</label>
+            <input className="input" placeholder={ajTipo==='entrada'?'Ex: Produção semanal':'Ex: Quebra / Venda manual'}
+              value={ajMotivo} onChange={e=>setAjMotivo(e.target.value)} style={{marginBottom:20}}/>
+            <button onClick={salvarAjuste} disabled={!ajQtd||!ajMotivo.trim()}
+              style={{width:'100%',background:(!ajQtd||!ajMotivo.trim())?'#e5e7eb':(ajTipo==='entrada'?C.green:C.red),
+                border:'none',borderRadius:14,padding:14,color:(!ajQtd||!ajMotivo.trim())?'#9ca3af':'white',
+                fontWeight:800,cursor:(!ajQtd||!ajMotivo.trim())?'default':'pointer',fontSize:15,fontFamily:'inherit'}}>
+              Confirmar Ajuste
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
