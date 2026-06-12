@@ -12,6 +12,7 @@
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
@@ -101,7 +102,9 @@ const _fbCfg = {
   appId: "1:723898018846:web:39f731562a8fb8c52c920f"
 };
 if (!firebase.apps.length) firebase.initializeApp(_fbCfg);
-window.__fsdb = firebase.firestore();
+window.__fsdb   = firebase.firestore();
+window.__fbauth = firebase.auth();
+window._fbCfg   = _fbCfg; // exposto para uso no componente de usuários
 </script>
 <script type="text/babel">
 const { useState, useEffect } = React;
@@ -210,7 +213,7 @@ const Logo = ({ size = 'header' }) => (
 );
 
 // ── APP ────────────────────────────────────────────────────────────────
-function App() {
+function App({ currentUserEmail, onLogout }) {
   const [tab,    setTab]    = useState('dashboard');
   const [trans,  setTrans]  = useState(()=>db.get('fp_trans',[]));
   const [orders, setOrders] = useState(()=>db.get('fp_orders',[]));
@@ -512,7 +515,7 @@ function App() {
     return () => clearInterval(id);
   }, [sheetId]);
 
-  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, paidEvent, contas, addConta, pagarConta, delConta, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus, newCardapioCount, catsPagar, setCatsPagar, fornecedores, addFornecedor, updFornecedor, delFornecedor, estoqueData, estoqueHist, ajustarEstoque, delHistoricoEstoque };
+  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, paidEvent, contas, addConta, pagarConta, delConta, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus, newCardapioCount, catsPagar, setCatsPagar, fornecedores, addFornecedor, updFornecedor, delFornecedor, estoqueData, estoqueHist, ajustarEstoque, delHistoricoEstoque, currentUserEmail, onLogout };
 
   const TABS = [
     {id:'dashboard',   lbl:'Início',   icon:I.home},
@@ -555,6 +558,10 @@ function App() {
             <button onClick={()=>setShowCfg(true)} title="Configurações" style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 10px',cursor:'pointer',display:'flex',alignItems:'center',fontFamily:'inherit',position:'relative'}}>
               {I.gear('white',17)}
               {sheetId&&syncing&&<span style={{position:'absolute',top:-3,right:-3,width:8,height:8,borderRadius:'50%',background:'#f59e0b'}}/>}
+            </button>
+            <button onClick={()=>{if(window.confirm('Sair do sistema?')) onLogout();}} title="Sair"
+              style={{background:'rgba(255,255,255,0.12)',border:'1px solid rgba(255,255,255,0.25)',borderRadius:10,color:'rgba(255,255,255,0.75)',padding:'8px 10px',cursor:'pointer',display:'flex',alignItems:'center',fontFamily:'inherit',fontSize:16}}>
+              ⏏
             </button>
           </div>
         </div>
@@ -2225,11 +2232,132 @@ function SettingsModal({ ctx }) {
         <div style={{height:1,background:C.border,margin:'20px 0'}}/>
 
         <BackupSection ctx={ctx}/>
+
+        <div style={{height:1,background:C.border,margin:'20px 0'}}/>
+        <UsuariosSection ctx={ctx}/>
       </div>
     </div>
   );
 }
 
+// ── USUÁRIOS ─────────────────────────────────────────────────────────────────
+function UsuariosSection({ ctx }) {
+  const [usuarios,  setUsuarios]  = useState([]);
+  const [loading,   setLoading]   = useState(false);
+  const [novoEmail, setNovoEmail] = useState('');
+  const [novaSenha, setNovaSenha] = useState('');
+  const [novoNome,  setNovoNome]  = useState('');
+  const [msg,       setMsg]       = useState(null); // {ok,txt}
+  const [criando,   setCriando]   = useState(false);
+
+  // carrega lista de usuários do Firestore
+  useEffect(() => {
+    const unsub = window.__fsdb.collection('fp_data').doc('fp_usuarios')
+      .onSnapshot(doc => {
+        if (doc.exists) setUsuarios(doc.data().lista || []);
+        else setUsuarios([]);
+      });
+    return unsub;
+  }, []);
+
+  const salvarLista = async (nova) => {
+    await window.__fsdb.collection('fp_data').doc('fp_usuarios').set({ lista: nova });
+  };
+
+  const criarUsuario = async () => {
+    const e = novoEmail.trim().toLowerCase();
+    const s = novaSenha.trim();
+    const n = novoNome.trim();
+    if (!e || !s || !n) { setMsg({ok:false,txt:'Preencha nome, e-mail e senha.'}); return; }
+    if (s.length < 6)   { setMsg({ok:false,txt:'Senha deve ter pelo menos 6 caracteres.'}); return; }
+    if (usuarios.find(u=>u.email===e)) { setMsg({ok:false,txt:'Este e-mail já está cadastrado.'}); return; }
+    setCriando(true); setMsg(null);
+    try {
+      // Cria via app secundário para não deslogar o usuário atual
+      const app2 = firebase.initializeApp(window._fbCfg, 'criacao_' + Date.now());
+      try {
+        await app2.auth().createUserWithEmailAndPassword(e, s);
+        await app2.auth().signOut();
+      } finally {
+        await app2.delete();
+      }
+      const nova = [...usuarios, {email:e, nome:n, criadoEm: new Date().toLocaleDateString('pt-BR')}];
+      await salvarLista(nova);
+      setNovoEmail(''); setNovaSenha(''); setNovoNome('');
+      setMsg({ok:true, txt:`Usuário "${n}" criado com sucesso!`});
+    } catch(err) {
+      const msgs = {
+        'auth/email-already-in-use': 'Este e-mail já existe no Firebase.',
+        'auth/invalid-email':        'E-mail inválido.',
+        'auth/weak-password':        'Senha fraca. Use pelo menos 6 caracteres.',
+      };
+      setMsg({ok:false, txt: msgs[err.code] || 'Erro: ' + err.message});
+    } finally { setCriando(false); }
+  };
+
+  const removerUsuario = async (email) => {
+    if (email === ctx.currentUserEmail) { alert('Você não pode remover seu próprio acesso.'); return; }
+    if (!window.confirm(`Remover acesso de ${email}?`)) return;
+    const nova = usuarios.filter(u=>u.email!==email);
+    await salvarLista(nova);
+  };
+
+  return (
+    <div>
+      <div style={{fontWeight:800,fontSize:15,marginBottom:4}}>👥 Usuários do Sistema</div>
+      <div style={{fontSize:12,color:C.text2,marginBottom:16,lineHeight:1.5}}>
+        Crie logins para pessoas de confiança. O acesso é bloqueado para qualquer um não listado aqui.
+      </div>
+
+      {/* Lista */}
+      {usuarios.length===0
+        ? <div style={{textAlign:'center',padding:'16px 0',color:C.text2,fontSize:13}}>Nenhum usuário além de você.</div>
+        : usuarios.map(u=>(
+          <div key={u.email} style={{display:'flex',justifyContent:'space-between',alignItems:'center',
+            background:u.email===ctx.currentUserEmail?'#f0fdf4':'#f9f9f7',borderRadius:12,
+            padding:'10px 14px',marginBottom:8,border:`1px solid ${C.border}`}}>
+            <div>
+              <div style={{fontWeight:700,fontSize:13}}>{u.nome} {u.email===ctx.currentUserEmail&&<span style={{fontSize:10,color:C.green,fontWeight:700}}>(você)</span>}</div>
+              <div style={{fontSize:11,color:C.text2}}>{u.email} · desde {u.criadoEm}</div>
+            </div>
+            {u.email!==ctx.currentUserEmail&&(
+              <button onClick={()=>removerUsuario(u.email)}
+                style={{background:'transparent',border:'none',cursor:'pointer',padding:6}}>
+                {I.trash('#ccc',13)}
+              </button>
+            )}
+          </div>
+        ))
+      }
+
+      {/* Criar novo */}
+      <div style={{background:'#f9f9f7',borderRadius:16,padding:16,border:`1px solid ${C.border}`,marginTop:12}}>
+        <div style={{fontWeight:700,fontSize:13,marginBottom:12,color:C.text}}>+ Novo Usuário</div>
+        <label className="label">Nome</label>
+        <input className="input" placeholder="Ex: João da Silva" value={novoNome}
+          onChange={e=>setNovoNome(e.target.value)} style={{marginBottom:10}}/>
+        <label className="label">E-mail</label>
+        <input className="input" type="email" placeholder="funcionario@email.com" value={novoEmail}
+          onChange={e=>setNovoEmail(e.target.value)} style={{marginBottom:10}}/>
+        <label className="label">Senha inicial</label>
+        <input className="input" type="password" placeholder="Mín. 6 caracteres" value={novaSenha}
+          onChange={e=>setNovaSenha(e.target.value)} style={{marginBottom:14}}/>
+        {msg&&(
+          <div style={{borderRadius:10,padding:'9px 12px',marginBottom:12,fontSize:13,fontWeight:600,
+            background:msg.ok?'#f0fdf4':'#fff5f5',border:`1px solid ${msg.ok?'#bbf7d0':'#fca5a5'}`,
+            color:msg.ok?C.green:C.red}}>
+            {msg.txt}
+          </div>
+        )}
+        <button onClick={criarUsuario} disabled={criando}
+          style={{width:'100%',background:criando?'#ccc':C.red,border:'none',borderRadius:12,padding:13,
+            color:'white',fontWeight:800,cursor:criando?'default':'pointer',fontFamily:'inherit',fontSize:14}}>
+          {criando?'Criando...':'Criar Usuário'}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // ── CONTAS ──────────────────────────────────────────────────────────────────
 function Contas({ ctx }) {
@@ -2753,8 +2881,137 @@ function Estoque({ ctx }) {
 }
 
 
+// ── AUTH GATE ───────────────────────────────────────────────────────────────
+function AuthGate() {
+  const [authState, setAuthState] = useState('loading'); // 'loading'|'logado'|'deslogado'
+  const [userEmail, setUserEmail] = useState('');
+
+  useEffect(() => {
+    const unsub = window.__fbauth.onAuthStateChanged(u => {
+      if (u) { setUserEmail(u.email); setAuthState('logado'); }
+      else    { setAuthState('deslogado'); }
+    });
+    return unsub;
+  }, []);
+
+  if (authState === 'loading') return (
+    <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',
+      background:'#1a1a1a',flexDirection:'column',gap:14}}>
+      <div style={{width:44,height:44,border:'4px solid rgba(200,24,26,0.25)',
+        borderTopColor:'#C8181A',borderRadius:'50%',animation:'spin 0.8s linear infinite'}}/>
+      <div style={{color:'rgba(255,255,255,0.5)',fontSize:14}}>Carregando...</div>
+    </div>
+  );
+
+  if (authState === 'deslogado') return <LoginScreen onLogin={()=>setAuthState('logado')}/>;
+
+  return <App currentUserEmail={userEmail} onLogout={()=>{window.__fbauth.signOut();setAuthState('deslogado');}}/>;
+}
+
+// ── LOGIN SCREEN ─────────────────────────────────────────────────────────────
+function LoginScreen({ onLogin }) {
+  const [email,    setEmail]    = useState('');
+  const [senha,    setSenha]    = useState('');
+  const [lembrar,  setLembrar]  = useState(true);
+  const [loading,  setLoading]  = useState(false);
+  const [erro,     setErro]     = useState('');
+  const [showPwd,  setShowPwd]  = useState(false);
+
+  const entrar = async () => {
+    if (!email.trim() || !senha) { setErro('Preencha e-mail e senha.'); return; }
+    setLoading(true); setErro('');
+    try {
+      const persistence = lembrar
+        ? firebase.auth.Auth.Persistence.LOCAL
+        : firebase.auth.Auth.Persistence.SESSION;
+      await window.__fbauth.setPersistence(persistence);
+      await window.__fbauth.signInWithEmailAndPassword(email.trim(), senha);
+      onLogin();
+    } catch(e) {
+      const msgs = {
+        'auth/user-not-found':    'E-mail não cadastrado.',
+        'auth/wrong-password':    'Senha incorreta.',
+        'auth/invalid-email':     'E-mail inválido.',
+        'auth/too-many-requests': 'Muitas tentativas. Aguarde alguns minutos.',
+        'auth/invalid-credential':'E-mail ou senha incorretos.',
+      };
+      setErro(msgs[e.code] || 'Erro ao entrar. Verifique os dados.');
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div style={{minHeight:'100vh',background:'#1a1a1a',display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}} @keyframes fadein{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}`}</style>
+      <div style={{background:'#242424',borderRadius:24,padding:'36px 32px',width:'100%',maxWidth:380,
+        boxShadow:'0 24px 64px rgba(0,0,0,0.5)',animation:'fadein 0.4s ease'}}>
+
+        {/* Logo */}
+        <div style={{textAlign:'center',marginBottom:32}}>
+          <div style={{fontSize:11,color:'rgba(200,24,26,0.8)',letterSpacing:4,textTransform:'uppercase',marginBottom:4}}>Sistema de Gestão</div>
+          <div style={{fontFamily:'Georgia,serif',fontSize:28,fontWeight:700,color:'white',lineHeight:1.1}}>Fino Palastro</div>
+          <div style={{width:40,height:2,background:'#C8181A',margin:'10px auto 0'}}/>
+        </div>
+
+        {/* Form */}
+        <div style={{marginBottom:14}}>
+          <label style={{display:'block',fontSize:11,fontWeight:700,color:'rgba(255,255,255,0.45)',
+            textTransform:'uppercase',letterSpacing:0.8,marginBottom:8}}>E-mail</label>
+          <input value={email} onChange={e=>setEmail(e.target.value)}
+            onKeyDown={e=>e.key==='Enter'&&entrar()}
+            placeholder="seu@email.com" type="email" autoComplete="email"
+            style={{width:'100%',background:'#2e2e2e',border:'1px solid #3a3a3a',borderRadius:12,
+              padding:'13px 16px',color:'white',fontSize:15,outline:'none',fontFamily:'inherit',
+              boxSizing:'border-box'}}/>
+        </div>
+
+        <div style={{marginBottom:20,position:'relative'}}>
+          <label style={{display:'block',fontSize:11,fontWeight:700,color:'rgba(255,255,255,0.45)',
+            textTransform:'uppercase',letterSpacing:0.8,marginBottom:8}}>Senha</label>
+          <input value={senha} onChange={e=>setSenha(e.target.value)}
+            onKeyDown={e=>e.key==='Enter'&&entrar()}
+            placeholder="••••••••" type={showPwd?'text':'password'} autoComplete="current-password"
+            style={{width:'100%',background:'#2e2e2e',border:'1px solid #3a3a3a',borderRadius:12,
+              padding:'13px 44px 13px 16px',color:'white',fontSize:15,outline:'none',fontFamily:'inherit',
+              boxSizing:'border-box'}}/>
+          <button onClick={()=>setShowPwd(v=>!v)}
+            style={{position:'absolute',right:12,top:36,background:'none',border:'none',cursor:'pointer',
+              color:'rgba(255,255,255,0.35)',fontSize:16,padding:4}}>
+            {showPwd?'🙈':'👁'}
+          </button>
+        </div>
+
+        {/* Lembrar */}
+        <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',marginBottom:22}}>
+          <input type="checkbox" checked={lembrar} onChange={e=>setLembrar(e.target.checked)}
+            style={{width:18,height:18,accentColor:'#C8181A',cursor:'pointer'}}/>
+          <span style={{fontSize:13,color:'rgba(255,255,255,0.55)'}}>Entrar automaticamente na próxima vez</span>
+        </label>
+
+        {/* Erro */}
+        {erro && (
+          <div style={{background:'rgba(200,24,26,0.12)',border:'1px solid rgba(200,24,26,0.4)',
+            borderRadius:10,padding:'10px 14px',marginBottom:16,color:'#f87171',fontSize:13,fontWeight:600}}>
+            {erro}
+          </div>
+        )}
+
+        {/* Botão */}
+        <button onClick={entrar} disabled={loading}
+          style={{width:'100%',background:loading?'#3a3a3a':'#C8181A',border:'none',borderRadius:14,
+            padding:15,color:loading?'rgba(255,255,255,0.3)':'white',fontWeight:800,fontSize:15,
+            cursor:loading?'default':'pointer',fontFamily:'inherit',display:'flex',alignItems:'center',
+            justifyContent:'center',gap:10,transition:'background 0.2s'}}>
+          {loading
+            ? <><div style={{width:18,height:18,border:'2px solid rgba(255,255,255,0.2)',borderTopColor:'white',borderRadius:'50%',animation:'spin 0.7s linear infinite'}}/> Entrando...</>
+            : 'Entrar'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<App/>);
+root.render(<AuthGate/>);
 </script>
 </body>
 </html>
