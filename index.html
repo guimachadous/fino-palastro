@@ -245,8 +245,17 @@ function App({ currentUserEmail, onLogout }) {
   const [estoqueHist,   setEstoqueHist]   = useState(()=>db.get('fp_estoque_hist', []));
   const [alertKey, setAlertKey] = useState('');
   const [newCardapioCount, setNewCardapioCount] = useState(0);
+  const [notifPerm, setNotifPerm] = useState(()=> 'Notification' in window ? Notification.permission : 'unsupported');
   const initDone = React.useRef(false);
   const importedCardapioIds = React.useRef(new Set());
+
+  // Solicita permissão de notificação ao montar (após login)
+  useEffect(() => {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'default') {
+      Notification.requestPermission().then(p => setNotifPerm(p));
+    }
+  }, []);
 
   useEffect(()=>{ if(initDone.current) db.set('fp_trans',   trans);  }, [trans]);
   useEffect(()=>{ if(initDone.current) db.set('fp_orders',  orders); }, [orders]);
@@ -479,12 +488,16 @@ function App({ currentUserEmail, onLogout }) {
         .where('status','==','novo')
         .onSnapshot(snap => {
           let added = 0;
+          let lastCliente = '';
+          let lastTotal = 0;
           snap.docChanges().forEach(change => {
             if (change.type !== 'added') return;
             const docId = change.doc.id;
             if (importedCardapioIds.current.has(docId)) return;
             importedCardapioIds.current.add(docId);
             const d = change.doc.data();
+            lastCliente = d.cliente || 'Cliente';
+            lastTotal   = d.total   || 0;
             const orderItems = (d.itens||[]).map(i=>({
               productId: (i.nome||'').replace(/\s+/g,'_').toLowerCase(),
               productName: i.nome||'',
@@ -512,7 +525,29 @@ function App({ currentUserEmail, onLogout }) {
             window.__fsdb.collection('fp_pedidos').doc(docId).update({status:'importado'}).catch(()=>{});
             added++;
           });
-          if (added > 0) { setNewCardapioCount(c=>c+added); playBeep(); }
+          if (added > 0) {
+            setNewCardapioCount(c=>c+added);
+            playBeep();
+            // Notificação do navegador
+            if ('Notification' in window && Notification.permission === 'granted') {
+              try {
+                const titulo = added === 1
+                  ? `🍕 Novo pedido de ${lastCliente}!`
+                  : `🍕 ${added} novos pedidos chegaram!`;
+                const corpo = added === 1
+                  ? `Total: R$ ${lastTotal.toFixed(2).replace('.',',')} — toque para abrir`
+                  : 'Toque para ver os pedidos';
+                const notif = new Notification(titulo, {
+                  body:      corpo,
+                  icon:      '/icon-192.png',
+                  badge:     '/icon-192.png',
+                  tag:       'novo-pedido',
+                  renotify:  true,
+                });
+                notif.onclick = () => { window.focus(); notif.close(); };
+              } catch(e) {}
+            }
+          }
         }, ()=>{});
     } catch(e){}
     return ()=>{ try{unsub&&unsub();}catch(e){} };
@@ -567,6 +602,17 @@ function App({ currentUserEmail, onLogout }) {
                 {cloudStatus==='error' && <><span style={{fontSize:13}}>⚠️</span>
                   <span style={{fontSize:11,color:'#fca5a5',fontWeight:700}}>Offline</span></>}
               </div>
+            )}
+            {notifPerm === 'default' && (
+              <button title="Ativar notificações de pedidos"
+                onClick={()=> Notification.requestPermission().then(p=>setNotifPerm(p))}
+                style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 10px',cursor:'pointer',fontFamily:'inherit',fontSize:15}}>
+                🔔
+              </button>
+            )}
+            {notifPerm === 'denied' && (
+              <span title="Notificações bloqueadas — libere nas configurações do navegador"
+                style={{fontSize:15,opacity:0.5,cursor:'help'}}>🔕</span>
             )}
             <button onClick={()=>setShowCfg(true)} title="Configurações" style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 10px',cursor:'pointer',display:'flex',alignItems:'center',fontFamily:'inherit',position:'relative'}}>
               {I.gear('white',17)}
