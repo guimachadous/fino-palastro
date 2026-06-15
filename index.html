@@ -7,6 +7,11 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Fino Palastro">
   <title>Fino Palastro</title>
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#c82518">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <meta name="mobile-web-app-capable" content="yes">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <!-- Firebase SDK -->
@@ -3268,6 +3273,16 @@ function LoginScreen({ onLogin }) {
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(<AuthGate/>);
+</script>
+
+<!-- ── PWA: registra Service Worker ───────────────────────────────────────── -->
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('/sw.js')
+      .catch(function() {});
+  });
+}
 </script>
 </body>
 </html>
