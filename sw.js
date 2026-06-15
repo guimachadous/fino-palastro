@@ -1,5 +1,5 @@
 // ── Fino Palastro — Service Worker ─────────────────────────────────────────
-const CACHE_NAME = 'fino-palastro-v1';
+const CACHE_NAME = 'fino-palastro-v2';
 
 // Arquivos que ficam disponíveis offline
 const STATIC_ASSETS = [
@@ -32,6 +32,19 @@ self.addEventListener('activate', event => {
         keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
       )
     ).then(() => self.clients.claim())
+  );
+});
+
+// ── NOTIFICATION CLICK: abre o app ao tocar na notificação ─────────────────
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      for (const client of list) {
+        if ('focus' in client) return client.focus();
+      }
+      return clients.openWindow('/index.html');
+    })
   );
 });
 
