@@ -1,5 +1,8 @@
+// ── OneSignal ───────────────────────────────────────────────────────────────
+importScripts("https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js");
+
 // ── Fino Palastro — Service Worker ─────────────────────────────────────────
-const CACHE_NAME = 'fino-palastro-v4';
+const CACHE_NAME = 'fino-palastro-v5';
 
 // Arquivos que ficam disponíveis offline
 const STATIC_ASSETS = [
