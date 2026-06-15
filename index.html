@@ -235,6 +235,7 @@ function App({ currentUserEmail, onLogout }) {
   const [catsPagar,     setCatsPagar]     = useState(()=>db.get('fp_cats_pagar', CATS_P_DEFAULT));
   const [unidadesMedida,setUnidadesMedida]= useState(()=>db.get('fp_unidades', UNIDADES_DEFAULT));
   const [fornecedores,  setFornecedores]  = useState(()=>db.get('fp_fornecedores', []));
+  const [materiasPrimas,setMateriasPrimas]= useState(()=>db.get('fp_materias_primas', []));
   const [estoqueData,   setEstoqueData]   = useState(()=>db.get('fp_estoque', {}));
   const [estoqueHist,   setEstoqueHist]   = useState(()=>db.get('fp_estoque_hist', []));
   const [alertKey, setAlertKey] = useState('');
@@ -251,7 +252,8 @@ function App({ currentUserEmail, onLogout }) {
   useEffect(()=>{ if(initDone.current) db.set('fp_contas',       contas);       }, [contas]);
   useEffect(()=>{ if(initDone.current) db.set('fp_cats_pagar',   catsPagar);    }, [catsPagar]);
   useEffect(()=>{ if(initDone.current) db.set('fp_unidades',    unidadesMedida);}, [unidadesMedida]);
-  useEffect(()=>{ if(initDone.current) db.set('fp_fornecedores', fornecedores); }, [fornecedores]);
+  useEffect(()=>{ if(initDone.current) db.set('fp_fornecedores',    fornecedores);    }, [fornecedores]);
+  useEffect(()=>{ if(initDone.current) db.set('fp_materias_primas', materiasPrimas);  }, [materiasPrimas]);
   useEffect(()=>{ if(initDone.current) db.set('fp_estoque',      estoqueData);  }, [estoqueData]);
   useEffect(()=>{ if(initDone.current) db.set('fp_estoque_hist', estoqueHist);  }, [estoqueHist]);
 
@@ -284,6 +286,9 @@ function App({ currentUserEmail, onLogout }) {
   const addFornecedor = f => setFornecedores(p=>[{...f,id:genId(),criadoEm:today()},...p]);
   const updFornecedor = (id,d) => setFornecedores(p=>p.map(f=>f.id===id?{...f,...d}:f));
   const delFornecedor = id => setFornecedores(p=>p.filter(f=>f.id!==id));
+  const addMateriaPrima = m => setMateriasPrimas(p=>[{...m,id:genId(),criadoEm:today()},...p]);
+  const updMateriaPrima = (id,d) => setMateriasPrimas(p=>p.map(m=>m.id===id?{...m,...d}:m));
+  const delMateriaPrima = id => setMateriasPrimas(p=>p.filter(m=>m.id!==id));
   const delHistoricoEstoque = id => setEstoqueHist(p=>p.filter(h=>h.id!==id));
 
   // Estoque — ajuste manual ou automático
@@ -518,7 +523,7 @@ function App({ currentUserEmail, onLogout }) {
     return () => clearInterval(id);
   }, [sheetId]);
 
-  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, paidEvent, contas, addConta, pagarConta, delConta, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus, newCardapioCount, catsPagar, setCatsPagar, unidadesMedida, setUnidadesMedida, fornecedores, addFornecedor, updFornecedor, delFornecedor, estoqueData, estoqueHist, ajustarEstoque, delHistoricoEstoque, currentUserEmail, onLogout };
+  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, paidEvent, contas, addConta, pagarConta, delConta, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus, newCardapioCount, catsPagar, setCatsPagar, unidadesMedida, setUnidadesMedida, fornecedores, addFornecedor, updFornecedor, delFornecedor, materiasPrimas, addMateriaPrima, updMateriaPrima, delMateriaPrima, estoqueData, estoqueHist, ajustarEstoque, delHistoricoEstoque, currentUserEmail, onLogout };
 
   const TABS = [
     {id:'dashboard',   lbl:'Início',   icon:I.home},
@@ -1670,10 +1675,20 @@ function Lucros({ ctx }) {
             <div style={{background:'rgba(255,255,255,0.15)',borderRadius:14,padding:'12px 14px'}}>
               <div style={{fontSize:11,opacity:0.8,marginBottom:4}}>👩 Samantha</div>
               <div style={{fontSize:26,fontWeight:900,letterSpacing:'-0.5px'}}>{fmtBRL(samTotal)}</div>
+              <div style={{fontSize:10,opacity:0.6,marginTop:5,lineHeight:1.5}}>
+                ❄️ {(PROFIT_RATES.congelada.sam*100).toFixed(0)}% congelada<br/>
+                🔥 {(PROFIT_RATES.ao_vivo.sam*100).toFixed(0)}% ao vivo<br/>
+                ⚡ {(PROFIT_RATES.express.sam*100).toFixed(1)}% express
+              </div>
             </div>
             <div style={{background:'rgba(255,255,255,0.15)',borderRadius:14,padding:'12px 14px'}}>
               <div style={{fontSize:11,opacity:0.8,marginBottom:4}}>👨 Guilherme</div>
               <div style={{fontSize:26,fontWeight:900,letterSpacing:'-0.5px'}}>{fmtBRL(guiTotal)}</div>
+              <div style={{fontSize:10,opacity:0.6,marginTop:5,lineHeight:1.5}}>
+                ❄️ {(PROFIT_RATES.congelada.gui*100).toFixed(0)}% congelada<br/>
+                🔥 {(PROFIT_RATES.ao_vivo.gui*100).toFixed(0)}% ao vivo<br/>
+                ⚡ {(PROFIT_RATES.express.gui*100).toFixed(1)}% express
+              </div>
             </div>
           </div>
           <div style={{fontSize:11,opacity:0.6,marginTop:10,textAlign:'center'}}>
@@ -2610,6 +2625,15 @@ function ContaModal({ ctx, initTipo }) {
 
   const accent = tipo==='receber' ? C.green : C.red;
   const fornNomes = (ctx.fornecedores||[]).map(f=>f.nome);
+  const mpNomes   = (ctx.materiasPrimas||[]).map(m=>m.nome);
+
+  const onDescricaoChange = (val) => {
+    setDescricao(val);
+    if (tipo==='pagar') {
+      const mp = (ctx.materiasPrimas||[]).find(m=>m.nome.toLowerCase()===val.toLowerCase());
+      if (mp && mp.unidadePadrao) setUnidade(mp.unidadePadrao);
+    }
+  };
 
   return (
     <div className="overlay" onClick={close}>
@@ -2629,8 +2653,14 @@ function ContaModal({ ctx, initTipo }) {
         </div>
 
         <label className="label">Descrição *</label>
-        <input className="input" placeholder={tipo==='receber'?'Ex: Pedido de Ana Silva':'Ex: Compra de queijos'}
-          value={descricao} onChange={e=>setDescricao(e.target.value)} style={{marginBottom:14}}/>
+        <input className="input" placeholder={tipo==='receber'?'Ex: Pedido de Ana Silva':'Ex: Mozzarella, Calabresa...'}
+          value={descricao} onChange={e=>onDescricaoChange(e.target.value)}
+          list={tipo==='pagar'?'lista-mp':undefined} style={{marginBottom:14}}/>
+        {tipo==='pagar'&&(
+          <datalist id="lista-mp">
+            {mpNomes.map(n=><option key={n} value={n}/>)}
+          </datalist>
+        )}
 
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:14}}>
           <div>
@@ -2725,8 +2755,174 @@ function ContaModal({ ctx, initTipo }) {
 }
 
 // ── ESTOQUE ─────────────────────────────────────────────────────────────────
+// ── MATÉRIA PRIMA TAB ────────────────────────────────────────────────────────
+const MP_CATS_DEFAULT = ['Queijos','Frios e Carnes','Embalagem','Molhos e Temperos','Massas','Outros'];
+
+function MateriaPrimaTab({ ctx }) {
+  const [mpNome,    setMpNome]    = useState('');
+  const [mpUnidade, setMpUnidade] = useState('');
+  const [mpCat,     setMpCat]     = useState('');
+  const [mpEdit,    setMpEdit]    = useState(null);
+  const [detalhe,   setDetalhe]   = useState(null); // id do MP expandido p/ relatório
+  const [busca,     setBusca]     = useState('');
+
+  const salvar = () => {
+    const nome = mpNome.trim();
+    if (!nome) return;
+    if (mpEdit) {
+      ctx.updMateriaPrima(mpEdit.id, {nome, unidadePadrao: mpUnidade, categoria: mpCat});
+      setMpEdit(null);
+    } else {
+      ctx.addMateriaPrima({nome, unidadePadrao: mpUnidade, categoria: mpCat});
+    }
+    setMpNome(''); setMpUnidade(''); setMpCat('');
+  };
+
+  const iniciarEdicao = (m) => {
+    setMpEdit(m); setMpNome(m.nome); setMpUnidade(m.unidadePadrao||''); setMpCat(m.categoria||'');
+  };
+
+  // Para relatório: agrupa contas a pagar por nome de MP
+  const comprasPorMP = (mpNome) => {
+    return ctx.contas.filter(c =>
+      c.tipo === 'pagar' &&
+      c.descricao && c.descricao.toLowerCase().includes(mpNome.toLowerCase())
+    ).sort((a,b) => (b.vencimento||'') > (a.vencimento||'') ? 1 : -1);
+  };
+
+  const lista = ctx.materiasPrimas.filter(m =>
+    !busca || m.nome.toLowerCase().includes(busca.toLowerCase()) ||
+    (m.categoria||'').toLowerCase().includes(busca.toLowerCase())
+  );
+
+  // Agrupa por categoria para exibição
+  const porCat = lista.reduce((acc, m) => {
+    const cat = m.categoria || 'Sem categoria';
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(m);
+    return acc;
+  }, {});
+
+  return (
+    <div>
+      {/* Formulário */}
+      <div className="card" style={{marginBottom:14}}>
+        <div style={{fontWeight:700,fontSize:15,marginBottom:12}}>{mpEdit?'Editar Matéria Prima':'Nova Matéria Prima'}</div>
+        <label className="label">Nome *</label>
+        <input className="input" placeholder="Ex: Mozzarella, Calabresa, Caixa Pizza..." value={mpNome}
+          onChange={e=>setMpNome(e.target.value)} style={{marginBottom:10}}/>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
+          <div>
+            <label className="label">Unidade padrão</label>
+            <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:4}}>
+              {ctx.unidadesMedida.slice(0,6).map(u=>(
+                <button key={u} className="chip" onClick={()=>setMpUnidade(u===mpUnidade?'':u)}
+                  style={{background:mpUnidade===u?C.red:'white',color:mpUnidade===u?'white':C.text2,
+                    border:`1px solid ${mpUnidade===u?C.red:C.border}`,fontSize:11,padding:'4px 10px',fontWeight:700}}>
+                  {u}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="label">Categoria</label>
+            <select className="input" value={mpCat} onChange={e=>setMpCat(e.target.value)} style={{padding:'9px 12px'}}>
+              <option value="">Selecione...</option>
+              {MP_CATS_DEFAULT.map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{display:'flex',gap:8}}>
+          <button onClick={salvar} disabled={!mpNome.trim()}
+            style={{flex:1,background:mpNome.trim()?C.red:'#e5e7eb',border:'none',borderRadius:12,padding:12,
+              color:mpNome.trim()?'white':'#9ca3af',fontWeight:700,cursor:mpNome.trim()?'pointer':'default',fontFamily:'inherit'}}>
+            {mpEdit?'Salvar':'Cadastrar'}
+          </button>
+          {mpEdit&&<button onClick={()=>{setMpEdit(null);setMpNome('');setMpUnidade('');setMpCat('');}}
+            style={{background:'#f0ebe4',border:'none',borderRadius:12,padding:'12px 16px',cursor:'pointer',fontFamily:'inherit'}}>
+            Cancelar
+          </button>}
+        </div>
+      </div>
+
+      {/* Busca */}
+      {ctx.materiasPrimas.length > 0 && (
+        <input className="input" placeholder="🔍 Buscar matéria prima ou categoria..."
+          value={busca} onChange={e=>setBusca(e.target.value)} style={{marginBottom:14}}/>
+      )}
+
+      {/* Lista por categoria */}
+      {ctx.materiasPrimas.length===0 && (
+        <div style={{textAlign:'center',padding:'32px 0',color:C.text2,fontSize:13}}>Nenhuma matéria prima cadastrada ainda.</div>
+      )}
+
+      {Object.entries(porCat).map(([cat, itens])=>(
+        <div key={cat} style={{marginBottom:16}}>
+          <div className="section-label" style={{marginBottom:6}}>{cat}</div>
+          {itens.map(m=>{
+            const compras = comprasPorMP(m.nome);
+            const totalGasto = compras.reduce((s,c)=>s+(c.valor||0),0);
+            const totalQtd   = compras.reduce((s,c)=>s+(c.quantidade||0),0);
+            const isOpen     = detalhe===m.id;
+            return (
+              <div key={m.id} style={{marginBottom:8,background:'white',borderRadius:14,
+                border:`1px solid ${C.border}`,overflow:'hidden'}}>
+                {/* Linha principal */}
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 14px',cursor:'pointer'}}
+                  onClick={()=>setDetalhe(isOpen?null:m.id)}>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:700,fontSize:14,color:C.text}}>{m.nome}</div>
+                    <div style={{display:'flex',gap:6,marginTop:4,flexWrap:'wrap'}}>
+                      {m.unidadePadrao&&<span className="badge" style={{background:'#fdf4ff',color:'#7c3aed',fontSize:10,fontWeight:700}}>{m.unidadePadrao}</span>}
+                      {compras.length>0&&<span className="badge" style={{background:'#eff6ff',color:C.blue,fontSize:10}}>{compras.length} compra{compras.length>1?'s':''} · {fmtBRL(totalGasto)}</span>}
+                      {totalQtd>0&&m.unidadePadrao&&<span className="badge" style={{background:'#f0fdf4',color:C.green,fontSize:10}}>📦 {totalQtd} {m.unidadePadrao} total</span>}
+                    </div>
+                  </div>
+                  <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                    <button onClick={e=>{e.stopPropagation();iniciarEdicao(m);}}
+                      style={{background:'#f0ebe4',border:'none',borderRadius:10,padding:'6px 10px',cursor:'pointer',fontSize:12,fontFamily:'inherit'}}>Editar</button>
+                    <button onClick={e=>{e.stopPropagation();if(window.confirm('Excluir?')) ctx.delMateriaPrima(m.id);}}
+                      style={{background:'transparent',border:'none',cursor:'pointer',padding:4}}>{I.trash('#ccc',12)}</button>
+                    <span style={{color:C.text2,fontSize:16,marginLeft:2}}>{isOpen?'▲':'▼'}</span>
+                  </div>
+                </div>
+
+                {/* Relatório expandido */}
+                {isOpen&&(
+                  <div style={{borderTop:`1px solid ${C.border}`,padding:'12px 14px',background:'#fafaf8'}}>
+                    {compras.length===0
+                      ? <div style={{fontSize:13,color:C.text2,textAlign:'center',padding:'8px 0'}}>Nenhuma compra registrada ainda.</div>
+                      : <>
+                          <div style={{fontWeight:700,fontSize:12,color:C.text2,marginBottom:8,textTransform:'uppercase',letterSpacing:0.5}}>Histórico de compras</div>
+                          {compras.slice(0,20).map(c=>(
+                            <div key={c.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',
+                              padding:'8px 0',borderBottom:`1px solid ${C.border}`}}>
+                              <div>
+                                <div style={{fontSize:13,fontWeight:600}}>{fmtDate(c.vencimento||c.data||'')}</div>
+                                <div style={{fontSize:11,color:C.text2}}>{c.cliente||'—'}{c.quantidade&&c.unidade?' · '+c.quantidade+' '+c.unidade:''}</div>
+                              </div>
+                              <div style={{fontWeight:800,fontSize:14,color:C.red}}>{fmtBRL(c.valor)}</div>
+                            </div>
+                          ))}
+                          <div style={{display:'flex',justifyContent:'space-between',paddingTop:10,fontWeight:800,fontSize:14}}>
+                            <span>Total gasto</span>
+                            <span style={{color:C.red}}>{fmtBRL(totalGasto)}</span>
+                          </div>
+                        </>
+                    }
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Estoque({ ctx }) {
-  const [subTab, setSubTab] = useState('estoque'); // 'estoque'|'fornecedores'|'historico'
+  const [subTab, setSubTab] = useState('estoque'); // 'estoque'|'mp'|'fornecedores'|'historico'
   const [ajuste, setAjuste] = useState(null); // { nome, cat } da pizza selecionada
   const [ajQtd,  setAjQtd]  = useState('');
   const [ajTipo, setAjTipo] = useState('entrada');
@@ -2788,7 +2984,7 @@ function Estoque({ ctx }) {
     <div>
       {/* Sub-tabs */}
       <div style={{display:'flex',gap:6,marginBottom:16}}>
-        {[['estoque','📦 Estoque'],['fornecedores','🚛 Fornecedores'],['historico','📋 Histórico']].map(([k,l])=>(
+        {[['estoque','📦 Estoque'],['mp','🥬 Mat. Prima'],['fornecedores','🚛 Fornecedores'],['historico','📋 Histórico']].map(([k,l])=>(
           <button key={k} className="chip" onClick={()=>setSubTab(k)}
             style={{flex:1,justifyContent:'center',fontSize:12,fontWeight:700,
               background:subTab===k?C.red:'white',color:subTab===k?'white':C.text2,
@@ -2807,6 +3003,8 @@ function Estoque({ ctx }) {
           {minis.map(p=><StockRow key={p.id} p={p}/>)}
         </div>
       )}
+
+      {subTab==='mp'&&<MateriaPrimaTab ctx={ctx}/>}
 
       {subTab==='fornecedores'&&(
         <div>
