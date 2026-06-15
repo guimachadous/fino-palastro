@@ -151,6 +151,7 @@ const PRODUCTS_DEFAULT = [
 const CATS_IN  = ['Venda Congelada','Evento ao Vivo','Evento Express','Outros'];
 const CATS_OUT = ['Insumos/Ingredientes','Embalagens','Despesa Fixa','Despesa Variável','Marketing','Outros'];
 const CATS_P_DEFAULT = ['Fornecedor','Ingredientes','Embalagem','Aluguel','Serviço','Outros'];
+const UNIDADES_DEFAULT = ['KG','LT','PCT','UN','CX','G','ML'];
 
 // Lista de pizzas do cardápio — usada para controle de estoque
 const PIZZAS_ESTOQUE = [
@@ -232,6 +233,7 @@ function App({ currentUserEmail, onLogout }) {
   const [cloudStatus, setCloudStatus] = useState('idle'); // idle|syncing|ok|error
   const [contas,        setContas]        = useState(()=>db.get('fp_contas',[]));
   const [catsPagar,     setCatsPagar]     = useState(()=>db.get('fp_cats_pagar', CATS_P_DEFAULT));
+  const [unidadesMedida,setUnidadesMedida]= useState(()=>db.get('fp_unidades', UNIDADES_DEFAULT));
   const [fornecedores,  setFornecedores]  = useState(()=>db.get('fp_fornecedores', []));
   const [estoqueData,   setEstoqueData]   = useState(()=>db.get('fp_estoque', {}));
   const [estoqueHist,   setEstoqueHist]   = useState(()=>db.get('fp_estoque_hist', []));
@@ -248,6 +250,7 @@ function App({ currentUserEmail, onLogout }) {
   useEffect(()=>{ if(initDone.current) db.set('fp_opening_bal', openBal); }, [openBal]);
   useEffect(()=>{ if(initDone.current) db.set('fp_contas',       contas);       }, [contas]);
   useEffect(()=>{ if(initDone.current) db.set('fp_cats_pagar',   catsPagar);    }, [catsPagar]);
+  useEffect(()=>{ if(initDone.current) db.set('fp_unidades',    unidadesMedida);}, [unidadesMedida]);
   useEffect(()=>{ if(initDone.current) db.set('fp_fornecedores', fornecedores); }, [fornecedores]);
   useEffect(()=>{ if(initDone.current) db.set('fp_estoque',      estoqueData);  }, [estoqueData]);
   useEffect(()=>{ if(initDone.current) db.set('fp_estoque_hist', estoqueHist);  }, [estoqueHist]);
@@ -515,7 +518,7 @@ function App({ currentUserEmail, onLogout }) {
     return () => clearInterval(id);
   }, [sheetId]);
 
-  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, paidEvent, contas, addConta, pagarConta, delConta, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus, newCardapioCount, catsPagar, setCatsPagar, fornecedores, addFornecedor, updFornecedor, delFornecedor, estoqueData, estoqueHist, ajustarEstoque, delHistoricoEstoque, currentUserEmail, onLogout };
+  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, paidEvent, contas, addConta, pagarConta, delConta, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus, newCardapioCount, catsPagar, setCatsPagar, unidadesMedida, setUnidadesMedida, fornecedores, addFornecedor, updFornecedor, delFornecedor, estoqueData, estoqueHist, ajustarEstoque, delHistoricoEstoque, currentUserEmail, onLogout };
 
   const TABS = [
     {id:'dashboard',   lbl:'Início',   icon:I.home},
@@ -2415,6 +2418,7 @@ function Contas({ ctx }) {
                 Venc: {fmtDate(c.vencimento)}{venc&&dias!==null?` (${Math.abs(dias)}d atrás)`:''}</span>}
               {c.origemTipo && c.origemTipo!=='manual' && <span className="badge" style={{background:'#eff6ff',color:C.blue,fontSize:10}}>{c.origemTipo==='pedido'?'📦 Pedido':'🎉 Evento'}</span>}
               {c.notaFiscal && <span className="badge" style={{background:'#f0fdf4',color:C.green,fontSize:10}}>NF: {c.notaFiscal}</span>}
+              {c.quantidade!=null && c.unidade && <span className="badge" style={{background:'#fdf4ff',color:'#7c3aed',fontSize:10}}>📦 {c.quantidade} {c.unidade}</span>}
             </div>
           </div>
           <div style={{textAlign:'right',flexShrink:0}}>
@@ -2542,15 +2546,19 @@ function Contas({ ctx }) {
 // ── CONTA MODAL ────────────────────────────────────────────────────────────
 function ContaModal({ ctx, initTipo }) {
   const { close } = ctx;
-  const [tipo,       setTipo]       = useState(initTipo||'receber');
-  const [descricao,  setDescricao]  = useState('');
-  const [valor,      setValor]      = useState('');
-  const [vencimento, setVencimento] = useState(today());
-  const [categoria,  setCategoria]  = useState('');
-  const [cliente,    setCliente]    = useState('');
-  const [notaFiscal, setNotaFiscal] = useState('');
-  const [novaCat,    setNovaCat]    = useState('');
-  const [addingCat,  setAddingCat]  = useState(false);
+  const [tipo,        setTipo]        = useState(initTipo||'receber');
+  const [descricao,   setDescricao]   = useState('');
+  const [valor,       setValor]       = useState('');
+  const [vencimento,  setVencimento]  = useState(today());
+  const [categoria,   setCategoria]   = useState('');
+  const [cliente,     setCliente]     = useState('');
+  const [notaFiscal,  setNotaFiscal]  = useState('');
+  const [novaCat,     setNovaCat]     = useState('');
+  const [addingCat,   setAddingCat]   = useState(false);
+  const [quantidade,  setQuantidade]  = useState('');
+  const [unidade,     setUnidade]     = useState('');
+  const [novaUnidade, setNovaUnidade] = useState('');
+  const [addingUn,    setAddingUn]    = useState(false);
 
   const CATS_R = ['Pedido','Evento','Serviço','Outros'];
   const cats   = tipo==='pagar' ? ctx.catsPagar : CATS_R;
@@ -2572,12 +2580,29 @@ function ContaModal({ ctx, initTipo }) {
     if (categoria===cat) setCategoria('');
   };
 
+  const addUnidade = () => {
+    const u = novaUnidade.trim().toUpperCase();
+    if (!u || ctx.unidadesMedida.includes(u)) return;
+    ctx.setUnidadesMedida(p=>[...p, u]);
+    setUnidade(u);
+    setNovaUnidade('');
+    setAddingUn(false);
+  };
+
+  const removeUnidade = (u) => {
+    if (UNIDADES_DEFAULT.includes(u)) return;
+    ctx.setUnidadesMedida(p=>p.filter(x=>x!==u));
+    if (unidade===u) setUnidade('');
+  };
+
   const save = () => {
     if (!ok) return;
     ctx.addConta({
       tipo, descricao:descricao.trim(), valor:parseFloat(valor.replace(',','.'))||0,
       vencimento, categoria:categoria||cats[0],
       cliente:cliente.trim(), notaFiscal:notaFiscal.trim(),
+      quantidade: quantidade ? parseFloat(quantidade.replace(',','.')) : null,
+      unidade: unidade || null,
       origemTipo:'manual', pago:false, pagoEm:null
     });
     close();
@@ -2618,6 +2643,39 @@ function ContaModal({ ctx, initTipo }) {
             <input className="input" type="date" value={vencimento} onChange={e=>setVencimento(e.target.value)}/>
           </div>
         </div>
+
+        {tipo==='pagar'&&(
+          <div style={{marginBottom:14}}>
+            <label className="label" style={{marginBottom:6}}>Quantidade comprada
+              <button onClick={()=>setAddingUn(v=>!v)} style={{marginLeft:8,fontSize:11,background:'transparent',border:`1px solid ${C.border}`,borderRadius:8,padding:'2px 8px',cursor:'pointer',color:C.text2}}>{addingUn?'Cancelar':'+ Nova unidade'}</button>
+            </label>
+            {addingUn&&(
+              <div style={{display:'flex',gap:6,marginBottom:8}}>
+                <input className="input" placeholder="Ex: FD, SC, BAG..." value={novaUnidade}
+                  onChange={e=>setNovaUnidade(e.target.value.toUpperCase())}
+                  onKeyDown={e=>e.key==='Enter'&&addUnidade()} style={{flex:1,marginBottom:0,textTransform:'uppercase'}}/>
+                <button onClick={addUnidade} style={{background:accent,border:'none',borderRadius:10,color:'white',padding:'0 14px',fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>OK</button>
+              </div>
+            )}
+            <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:10}}>
+              {ctx.unidadesMedida.map(u=>(
+                <div key={u} style={{display:'flex',alignItems:'center',gap:2}}>
+                  <button className="chip" onClick={()=>setUnidade(u===unidade?'':u)}
+                    style={{background:unidade===u?accent:'white',color:unidade===u?'white':C.text2,
+                      border:`1px solid ${unidade===u?accent:C.border}`,fontSize:12,padding:'5px 12px',fontWeight:700}}>
+                    {u}
+                  </button>
+                  {!UNIDADES_DEFAULT.includes(u)&&(
+                    <button onClick={()=>removeUnidade(u)} style={{background:'transparent',border:'none',cursor:'pointer',color:'#ccc',fontSize:14,padding:'0 2px',lineHeight:1}}>×</button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <input className="input" type="number" inputMode="decimal" placeholder={unidade ? `Qtd em ${unidade}` : 'Selecione a unidade acima'}
+              value={quantidade} onChange={e=>setQuantidade(e.target.value)} disabled={!unidade}
+              style={{maxWidth:180,marginBottom:0,opacity:unidade?1:0.45}}/>
+          </div>
+        )}
 
         <label className="label" style={{marginBottom:6}}>Categoria
           {tipo==='pagar'&&<button onClick={()=>setAddingCat(v=>!v)} style={{marginLeft:8,fontSize:11,background:'transparent',border:`1px solid ${C.border}`,borderRadius:8,padding:'2px 8px',cursor:'pointer',color:C.text2}}>{addingCat?'Cancelar':'+ Nova'}</button>}
