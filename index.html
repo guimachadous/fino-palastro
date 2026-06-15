@@ -7,6 +7,18 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Fino Palastro">
   <title>Fino Palastro</title>
+  <!-- OneSignal Web Push -->
+  <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+  <script>
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    OneSignalDeferred.push(function(OneSignal) {
+      OneSignal.init({
+        appId: "e09b83eb-b7d1-431b-9775-b891be3c9335",
+        notifyButton: { enable: false },
+        allowLocalhostAsSecureOrigin: true,
+      });
+    });
+  </script>
   <!-- PWA -->
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#c82518">
@@ -537,14 +549,23 @@ function App({ currentUserEmail, onLogout }) {
                 const corpo = added === 1
                   ? `Total: R$ ${lastTotal.toFixed(2).replace('.',',')} — toque para abrir`
                   : 'Toque para ver os pedidos';
-                const notif = new Notification(titulo, {
-                  body:      corpo,
-                  icon:      '/icon-192.png',
-                  badge:     '/icon-192.png',
-                  tag:       'novo-pedido',
-                  renotify:  true,
-                });
-                notif.onclick = () => { window.focus(); notif.close(); };
+                const optsNotif = {
+                  body:     corpo,
+                  icon:     '/icon-192.png',
+                  badge:    '/icon-192.png',
+                  tag:      'novo-pedido',
+                  renotify: true,
+                };
+                // Mobile (Chrome Android) exige showNotification via Service Worker
+                if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                  navigator.serviceWorker.ready.then(reg => {
+                    reg.showNotification(titulo, optsNotif);
+                  }).catch(() => {});
+                } else {
+                  // Fallback desktop
+                  const notif = new Notification(titulo, optsNotif);
+                  notif.onclick = () => { window.focus(); notif.close(); };
+                }
               } catch(e) {}
             }
           }
