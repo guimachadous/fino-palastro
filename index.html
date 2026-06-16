@@ -170,23 +170,27 @@ const PRODUCTS_DEFAULT = [
 const CATS_IN  = ['Venda Congelada','Evento ao Vivo','Evento Express','Outros'];
 const CATS_OUT = ['Insumos/Ingredientes','Embalagens','Despesa Fixa','Despesa Variável','Marketing','Outros'];
 const CATS_P_DEFAULT = ['Fornecedor','Ingredientes','Embalagem','Aluguel','Serviço','Outros'];
+const CATS_R_DEFAULT = ['Pedido','Evento','Serviço','Outros'];
 const UNIDADES_DEFAULT = ['KG','LT','PCT','UN','CX','G','ML'];
 
-// Lista de pizzas do cardápio — usada para controle de estoque
-const PIZZAS_ESTOQUE = [
-  {id:'pe_g1',nome:'Margherita Especial',             cat:'grande'},
-  {id:'pe_g2',nome:'Calabresa com Gorgonzola',         cat:'grande'},
-  {id:'pe_g3',nome:'Linguica Blumenau com Gorgonzola', cat:'grande'},
-  {id:'pe_g4',nome:'Lombinho com Catupiry e Alho Poro',cat:'grande'},
-  {id:'pe_g5',nome:'Pepperoni',                        cat:'grande'},
-  {id:'pe_g6',nome:'4 Formaggi',                       cat:'grande'},
-  {id:'pe_g7',nome:'File com Cheddar',                 cat:'grande'},
-  {id:'pe_g8',nome:'File com Gorgonzola',              cat:'grande'},
-  {id:'pe_g9',nome:'Brie com Geleia de Pimenta',       cat:'grande'},
-  {id:'pe_m1',nome:'Mini Margherita Especial',              cat:'mini'},
-  {id:'pe_m2',nome:'Mini Lombinho com Catupiry e Alho Poro',cat:'mini'},
-  {id:'pe_m3',nome:'Mini Brie com Geleia de Pimenta',       cat:'mini'},
-  {id:'pe_m4',nome:'Mini Calabresa com Gorgonzola',         cat:'mini'},
+// Lista de pizzas do cardápio — usada para controle de estoque (e fonte do catálogo sincronizado com pedidos)
+const PIZZAS_ESTOQUE_DEFAULT = [
+  {id:'pe_g1',nome:'Margherita Especial',             cat:'grande',preco:55,desc:'Pomodori pelati San Marzano, mozzarella de bufala, pesto de manjericao artesanal e Parmesao Capa Preta ralado'},
+  {id:'pe_g2',nome:'Calabresa com Gorgonzola',         cat:'grande',preco:50,desc:'Pomodori pelati San Marzano, mozzarella, gorgonzola, calabresa e Parmesao Capa Preta ralado'},
+  {id:'pe_g3',nome:'Linguica Blumenau com Gorgonzola', cat:'grande',preco:58,desc:'Pomodori pelati San Marzano, mozzarella, linguica Blumenau, gorgonzola e Parmesao Capa Preta ralado'},
+  {id:'pe_g4',nome:'Lombinho com Catupiry e Alho Poro',cat:'grande',preco:50,desc:'Pomodori pelati San Marzano, mozzarella, lombinho defumado, catupiry, alho poro e Parmesao Capa Preta ralado'},
+  {id:'pe_g5',nome:'Pepperoni',                        cat:'grande',preco:55,desc:'Pomodori pelati San Marzano, mozzarella, pepperoni e Parmesao Capa Preta ralado'},
+  {id:'pe_g6',nome:'4 Formaggi',                       cat:'grande',preco:55,desc:'Pomodori pelati San Marzano, mozzarella, Parmesao Capa Preta ralado, gorgonzola e provolone'},
+  {id:'pe_g7',nome:'File com Cheddar',                 cat:'grande',preco:60,desc:'Pomodori pelati San Marzano, mozzarella, file, cheddar e Parmesao Capa Preta ralado'},
+  {id:'pe_g8',nome:'File com Gorgonzola',              cat:'grande',preco:60,desc:'Pomodori pelati San Marzano, mozzarella, file, gorgonzola e Parmesao Capa Preta ralado'},
+  {id:'pe_g9',nome:'Brie com Geleia de Pimenta',       cat:'grande',preco:58,desc:'Pomodori pelati San Marzano, mozzarella, queijo brie e geleia de pimenta'},
+  {id:'pe_m1',nome:'Mini Margherita Especial',              cat:'mini',preco:15,desc:'Pomodori pelati San Marzano, mozzarella de bufala, pesto de manjericao artesanal e Parmesao Capa Preta ralado'},
+  {id:'pe_m2',nome:'Mini Lombinho com Catupiry e Alho Poro',cat:'mini',preco:15,desc:'Pomodori pelati San Marzano, mozzarella, lombinho defumado, catupiry, alho poro e Parmesao Capa Preta ralado'},
+  {id:'pe_m3',nome:'Mini Brie com Geleia de Pimenta',       cat:'mini',preco:15,desc:'Pomodori pelati San Marzano, mozzarella, queijo brie e geleia de pimenta'},
+  {id:'pe_m4',nome:'Mini Calabresa com Gorgonzola',         cat:'mini',preco:15,desc:'Pomodori pelati San Marzano, mozzarella, gorgonzola, calabresa e Parmesao Capa Preta ralado'},
+  {id:'pe_d1',nome:'Laka Oreo',                                       cat:'doce',preco:60,desc:'Chocolate branco Laka, bolacha Oreo e leite condensado'},
+  {id:'pe_d2',nome:'Chocolate Preto e Branco com Morango',            cat:'doce',preco:60,desc:'Chocolate preto, chocolate branco, morango e leite condensado'},
+  {id:'pe_d3',nome:'Laka com Geleia de Frutas Vermelhas e Mirtilo',   cat:'doce',preco:60,desc:'Chocolate branco Laka, geleia de frutas vermelhas, mirtilo e leite condensado'},
 ];
 const PAYMENTS = ['Pix','Dinheiro','Cartão Débito','Cartão Crédito'];
 
@@ -257,6 +261,8 @@ function App({ currentUserEmail, onLogout }) {
   const [materiasPrimas,setMateriasPrimas]= useState(()=>db.get('fp_materias_primas', []));
   const [estoqueData,   setEstoqueData]   = useState(()=>db.get('fp_estoque', {}));
   const [estoqueHist,   setEstoqueHist]   = useState(()=>db.get('fp_estoque_hist', []));
+  const [sabores,       setSabores]       = useState(()=>db.get('fp_sabores', PIZZAS_ESTOQUE_DEFAULT));
+  const [catsReceber,   setCatsReceber]   = useState(()=>db.get('fp_cats_receber', CATS_R_DEFAULT));
   const [alertKey, setAlertKey] = useState('');
   const [newCardapioCount, setNewCardapioCount] = useState(0);
   const [notifPerm, setNotifPerm] = useState(()=> 'Notification' in window ? Notification.permission : 'unsupported');
@@ -284,6 +290,8 @@ function App({ currentUserEmail, onLogout }) {
   useEffect(()=>{ if(initDone.current) db.set('fp_materias_primas', materiasPrimas);  }, [materiasPrimas]);
   useEffect(()=>{ if(initDone.current) db.set('fp_estoque',      estoqueData);  }, [estoqueData]);
   useEffect(()=>{ if(initDone.current) db.set('fp_estoque_hist', estoqueHist);  }, [estoqueHist]);
+  useEffect(()=>{ if(initDone.current) db.set('fp_sabores',      sabores);      }, [sabores]);
+  useEffect(()=>{ if(initDone.current) db.set('fp_cats_receber', catsReceber);  }, [catsReceber]);
 
   const addTrans  = t => setTrans(p  => [{...t,  id:genId()}, ...p]);
   const addOrder  = o => {
@@ -304,6 +312,7 @@ function App({ currentUserEmail, onLogout }) {
   const updEvent  = (id,d) => setEvents(p => p.map(e => e.id===id?{...e,...d}:e));
   const delTrans  = id => setTrans(p => p.filter(t => t.id!==id));
   const addConta   = c => setContas(p => [{...c, id:genId(), criadoEm:today()}, ...p]);
+  const updConta   = (id,d) => setContas(p => p.map(c => c.id===id?{...c,...d}:c));
   const pagarConta = id => setContas(p => p.map(c => c.id===id?{...c,pago:true,pagoEm:today()}:c));
   const delConta   = id => setContas(p => p.filter(c => c.id!==id));
 
@@ -318,6 +327,11 @@ function App({ currentUserEmail, onLogout }) {
   const updMateriaPrima = (id,d) => setMateriasPrimas(p=>p.map(m=>m.id===id?{...m,...d}:m));
   const delMateriaPrima = id => setMateriasPrimas(p=>p.filter(m=>m.id!==id));
   const delHistoricoEstoque = id => setEstoqueHist(p=>p.filter(h=>h.id!==id));
+
+  // Sabores (catálogo único — alimenta Estoque, Eventos Express e o site de pedidos)
+  const addSabor = s => setSabores(p=>[...p,{...s,id:genId()}]);
+  const updSabor = (id,d) => setSabores(p=>p.map(s=>s.id===id?{...s,...d}:s));
+  const delSabor = id => setSabores(p=>p.filter(s=>s.id!==id));
 
   // Estoque — ajuste manual ou automático
   const ajustarEstoque = (nome, delta, motivo, tipo) => {
@@ -586,7 +600,7 @@ function App({ currentUserEmail, onLogout }) {
     return () => clearInterval(id);
   }, [sheetId]);
 
-  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, paidEvent, contas, addConta, pagarConta, delConta, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus, newCardapioCount, catsPagar, setCatsPagar, unidadesMedida, setUnidadesMedida, fornecedores, addFornecedor, updFornecedor, delFornecedor, materiasPrimas, addMateriaPrima, updMateriaPrima, delMateriaPrima, estoqueData, estoqueHist, ajustarEstoque, delHistoricoEstoque, currentUserEmail, onLogout };
+  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, paidEvent, contas, addConta, updConta, pagarConta, delConta, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus, newCardapioCount, catsPagar, setCatsPagar, catsReceber, setCatsReceber, unidadesMedida, setUnidadesMedida, fornecedores, addFornecedor, updFornecedor, delFornecedor, materiasPrimas, addMateriaPrima, updMateriaPrima, delMateriaPrima, estoqueData, estoqueHist, ajustarEstoque, delHistoricoEstoque, sabores, addSabor, updSabor, delSabor, currentUserEmail, onLogout };
 
   const TABS = [
     {id:'dashboard',   lbl:'Início',   icon:I.home},
@@ -688,8 +702,8 @@ function App({ currentUserEmail, onLogout }) {
 
       {modal==='add_trans'  && <TransModal   ctx={ctx} initType={mData?.type}/>}
       {modal==='add_order'  && <OrderModal   ctx={ctx}/>}
-      {modal==='add_event'  && <EventModal   ctx={ctx}/>}
-      {modal==='add_conta'  && <ContaModal   ctx={ctx} initTipo={mData?.tipo||'receber'}/>}
+      {modal==='add_event'  && <EventModal   ctx={ctx} event={mData}/>}
+      {modal==='add_conta'  && <ContaModal   ctx={ctx} initTipo={mData?.tipo||'receber'} conta={mData?.id?mData:null}/>}
       {modal==='view_order' && <OrderDetail  ctx={ctx} order={mData}/>}
       {modal==='view_event' && <EventDetail  ctx={ctx} event={mData}/>}
       {showCfg              && <SettingsModal  ctx={ctx}/>}
@@ -1388,33 +1402,40 @@ function OrderModal({ ctx }) {
 }
 
 // ── MODAL: EVENT ────────────────────────────────────────────────────────────
-function EventModal({ ctx }) {
-  const [type,  setType]  =useState('ao_vivo');
-  const [client,setClient]=useState('');
-  const [wa,    setWa]    =useState('');
-  const [date,  setDate]  =useState('');
-  const [loc,   setLoc]   =useState('');
-  const [guests,setGuests]=useState('');
-  const [val,   setVal]   =useState('');
-  const [notes, setNotes] =useState('');
-  const [items, setItems] =useState([{productId:'',productName:'',cat:'grande',price:0,qty:1}]);
+function EventModal({ ctx, event }) {
+  const editing = !!event;
+  const [type,  setType]  =useState(event?.type || 'ao_vivo');
+  const [client,setClient]=useState(event?.client || '');
+  const [wa,    setWa]    =useState(event?.whatsapp || '');
+  const [date,  setDate]  =useState(event?.eventDate || '');
+  const [loc,   setLoc]   =useState(event?.location || '');
+  const [guests,setGuests]=useState(event?.guests ? String(event.guests) : '');
+  const [val,   setVal]   =useState(event?.proposedValue ? String(event.proposedValue) : '');
+  const [notes, setNotes] =useState(event?.notes || '');
+  const [items, setItems] =useState(event?.items?.length ? event.items.map(i=>({...i})) : [{productId:'',productName:'',cat:'grande',price:0,qty:1}]);
   const addItem = cat => setItems(p=>[...p,{productId:'',productName:'',cat,price:0,qty:1}]);
   const updItem = (idx,k,v) => setItems(p=>p.map((it,i)=>{
     if(i!==idx) return it;
     if(k==='productId'){
-      const pr = ctx.products.find(p=>p.id===v);
-      return pr ? {...it,productId:pr.id,productName:pr.name,price:pr.price,cat:pr.cat} : {...it,productId:v};
+      const pr = ctx.sabores.find(p=>p.id===v);
+      return pr ? {...it,productId:pr.id,productName:pr.nome,price:pr.preco,cat:pr.cat} : {...it,productId:v};
     }
     return {...it,[k]:k==='qty'?Math.max(1,parseInt(v)||1):v};
   }));
-  const save=()=>{ if(!client||!val)return; ctx.addEvent({type,client,whatsapp:wa,eventDate:date,location:loc,guests:parseInt(guests)||0,proposedValue:parseFloat(val),notes,items:type==='express'?items.filter(i=>i.productId):[],status:'orcamento',paid:false}); ctx.close(); };
+  const save=()=>{
+    if(!client||!val)return;
+    const dados = {type,client,whatsapp:wa,eventDate:date,location:loc,guests:parseInt(guests)||0,proposedValue:parseFloat(val),notes,items:type==='express'?items.filter(i=>i.productId):[]};
+    if (editing) ctx.updEvent(event.id, dados);
+    else ctx.addEvent({...dados,status:'orcamento',paid:false});
+    ctx.close();
+  };
 
   return (
     <div className="overlay" onClick={ctx.close}>
       <div className="sheet" onClick={e=>e.stopPropagation()}>
         <div className="sheet-handle"/>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
-          <div style={{fontSize:19,fontWeight:800}}>Novo Evento</div>
+          <div style={{fontSize:19,fontWeight:800}}>{editing?'Editar Evento':'Novo Evento'}</div>
           <button onClick={ctx.close} style={{background:'none',border:'none',cursor:'pointer'}}>{I.x('#bbb',24)}</button>
         </div>
 
@@ -1450,10 +1471,13 @@ function EventModal({ ctx }) {
                 <select className="input" style={{flex:1,padding:'10px 8px'}} value={item.productId} onChange={e=>updItem(idx,'productId',e.target.value)}>
                   <option value="">Selecionar...</option>
                   <optgroup label="Grandes">
-                    {ctx.products.filter(p=>p.cat==='grande').map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                    {ctx.sabores.filter(p=>p.cat==='grande').map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}
                   </optgroup>
                   <optgroup label="Mini">
-                    {ctx.products.filter(p=>p.cat==='mini').map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                    {ctx.sabores.filter(p=>p.cat==='mini').map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}
+                  </optgroup>
+                  <optgroup label="Doces">
+                    {ctx.sabores.filter(p=>p.cat==='doce').map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}
                   </optgroup>
                 </select>
                 <input className="input" type="number" min="1" style={{width:56,padding:'10px 8px',textAlign:'center'}} value={item.qty} onChange={e=>updItem(idx,'qty',e.target.value)}/>
@@ -1463,6 +1487,7 @@ function EventModal({ ctx }) {
             <div style={{display:'flex',gap:8}}>
               <button onClick={()=>addItem('grande')} style={{background:'#fff5f5',border:`1px solid #fca5a5`,borderRadius:10,padding:'8px 12px',fontSize:12,fontWeight:700,cursor:'pointer',color:C.red,fontFamily:'inherit'}}>+ Grande</button>
               <button onClick={()=>addItem('mini')}   style={{background:'#fffbeb',border:`1px solid #fde68a`,borderRadius:10,padding:'8px 12px',fontSize:12,fontWeight:700,cursor:'pointer',color:'#b45309',fontFamily:'inherit'}}>+ Mini</button>
+              <button onClick={()=>addItem('doce')}   style={{background:'#f5f0ff',border:`1px solid #d8b4fe`,borderRadius:10,padding:'8px 12px',fontSize:12,fontWeight:700,cursor:'pointer',color:'#7e22ce',fontFamily:'inherit'}}>+ Doce</button>
             </div>
           </div>
         )}
@@ -1470,7 +1495,7 @@ function EventModal({ ctx }) {
         <label className="label">Observações</label>
         <textarea className="input" style={{marginBottom:22,height:70,resize:'none'}} placeholder="Temas, pedidos especiais..." value={notes} onChange={e=>setNotes(e.target.value)}/>
 
-        <button className="btn-primary" onClick={save} disabled={!client||!val}>Salvar Evento</button>
+        <button className="btn-primary" onClick={save} disabled={!client||!val}>{editing?'Salvar Alterações':'Salvar Evento'}</button>
       </div>
     </div>
   );
@@ -1561,7 +1586,11 @@ function EventDetail({ ctx, event }) {
         <div className="sheet-handle"/>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:18}}>
           <div style={{fontSize:19,fontWeight:800}}>Detalhes do Evento</div>
-          <button onClick={ctx.close} style={{background:'none',border:'none',cursor:'pointer'}}>{I.x('#bbb',24)}</button>
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            <button onClick={()=>ctx.open('add_event',cur)}
+              style={{background:'#f0ebe4',border:'none',borderRadius:10,padding:'6px 12px',cursor:'pointer',fontSize:12,fontWeight:700,fontFamily:'inherit'}}>Editar</button>
+            <button onClick={ctx.close} style={{background:'none',border:'none',cursor:'pointer'}}>{I.x('#bbb',24)}</button>
+          </div>
         </div>
 
         <div style={{background:cur.type==='ao_vivo'?'#fff5f5':'#fffbeb',borderRadius:16,padding:16,marginBottom:16,border:`1.5px solid ${cur.type==='ao_vivo'?'#fca5a5':'#fde68a'}`}}>
@@ -2517,6 +2546,10 @@ function Contas({ ctx }) {
                 style={{background:accent,border:'none',borderRadius:10,color:'white',padding:'7px 12px',fontSize:12,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:4,fontFamily:'inherit'}}>
                 {I.check('white',13)} {tipo==='receber'?'Recebido':'Pago'}
               </button>
+              <button onClick={()=>ctx.open('add_conta', c)}
+                style={{background:'#f0ebe4',border:'none',borderRadius:10,padding:'7px 10px',cursor:'pointer',fontSize:12,fontWeight:700,fontFamily:'inherit'}}>
+                Editar
+              </button>
               <button onClick={()=>ctx.delConta(c.id)}
                 style={{background:'transparent',border:`1px solid ${C.border}`,borderRadius:10,color:C.red,padding:'7px 10px',cursor:'pointer',display:'flex',alignItems:'center',fontFamily:'inherit'}}>
                 {I.trash(C.red,13)}
@@ -2633,24 +2666,24 @@ function Contas({ ctx }) {
 }
 
 // ── CONTA MODAL ────────────────────────────────────────────────────────────
-function ContaModal({ ctx, initTipo }) {
+function ContaModal({ ctx, initTipo, conta }) {
   const { close } = ctx;
-  const [tipo,        setTipo]        = useState(initTipo||'receber');
-  const [descricao,   setDescricao]   = useState('');
-  const [valor,       setValor]       = useState('');
-  const [vencimento,  setVencimento]  = useState(today());
-  const [categoria,   setCategoria]   = useState('');
-  const [cliente,     setCliente]     = useState('');
-  const [notaFiscal,  setNotaFiscal]  = useState('');
+  const editing = !!conta;
+  const [tipo,        setTipo]        = useState(conta?.tipo || initTipo || 'receber');
+  const [descricao,   setDescricao]   = useState(conta?.descricao || '');
+  const [valor,       setValor]       = useState(conta?.valor ? String(conta.valor) : '');
+  const [vencimento,  setVencimento]  = useState(conta?.vencimento || today());
+  const [categoria,   setCategoria]   = useState(conta?.categoria || '');
+  const [cliente,     setCliente]     = useState(conta?.cliente || '');
+  const [notaFiscal,  setNotaFiscal]  = useState(conta?.notaFiscal || '');
   const [novaCat,     setNovaCat]     = useState('');
   const [addingCat,   setAddingCat]   = useState(false);
-  const [quantidade,  setQuantidade]  = useState('');
-  const [unidade,     setUnidade]     = useState('');
+  const [quantidade,  setQuantidade]  = useState(conta?.quantidade!=null ? String(conta.quantidade) : '');
+  const [unidade,     setUnidade]     = useState(conta?.unidade || '');
   const [novaUnidade, setNovaUnidade] = useState('');
   const [addingUn,    setAddingUn]    = useState(false);
 
-  const CATS_R = ['Pedido','Evento','Serviço','Outros'];
-  const cats   = tipo==='pagar' ? ctx.catsPagar : CATS_R;
+  const cats = tipo==='pagar' ? ctx.catsPagar : ctx.catsReceber;
 
   const ok = descricao.trim() && parseFloat(valor.replace(',','.'))>0;
 
@@ -2658,14 +2691,20 @@ function ContaModal({ ctx, initTipo }) {
     const c = novaCat.trim();
     if (!c || cats.includes(c)) return;
     if (tipo==='pagar') ctx.setCatsPagar(p=>[...p, c]);
+    else ctx.setCatsReceber(p=>[...p, c]);
     setCategoria(c);
     setNovaCat('');
     setAddingCat(false);
   };
 
   const removeCat = (cat) => {
-    if (CATS_P_DEFAULT.includes(cat)) return; // não remove padrão
-    ctx.setCatsPagar(p=>p.filter(c=>c!==cat));
+    if (tipo==='pagar') {
+      if (CATS_P_DEFAULT.includes(cat)) return; // não remove padrão
+      ctx.setCatsPagar(p=>p.filter(c=>c!==cat));
+    } else {
+      if (CATS_R_DEFAULT.includes(cat)) return; // não remove padrão
+      ctx.setCatsReceber(p=>p.filter(c=>c!==cat));
+    }
     if (categoria===cat) setCategoria('');
   };
 
@@ -2686,14 +2725,15 @@ function ContaModal({ ctx, initTipo }) {
 
   const save = () => {
     if (!ok) return;
-    ctx.addConta({
+    const dados = {
       tipo, descricao:descricao.trim(), valor:parseFloat(valor.replace(',','.'))||0,
       vencimento, categoria:categoria||cats[0],
       cliente:cliente.trim(), notaFiscal:notaFiscal.trim(),
       quantidade: quantidade ? parseFloat(quantidade.replace(',','.')) : null,
       unidade: unidade || null,
-      origemTipo:'manual', pago:false, pagoEm:null
-    });
+    };
+    if (editing) ctx.updConta(conta.id, dados);
+    else ctx.addConta({...dados, origemTipo:'manual', pago:false, pagoEm:null});
     close();
   };
 
@@ -2713,7 +2753,7 @@ function ContaModal({ ctx, initTipo }) {
     <div className="overlay" onClick={close}>
       <div className="sheet" onClick={e=>e.stopPropagation()}>
         <div className="sheet-handle"/>
-        <div style={{fontWeight:800,fontSize:18,marginBottom:18}}>Nova Conta</div>
+        <div style={{fontWeight:800,fontSize:18,marginBottom:18}}>{editing?'Editar Conta':'Nova Conta'}</div>
 
         {/* tipo chips */}
         <div style={{display:'flex',gap:8,marginBottom:18}}>
@@ -2782,7 +2822,7 @@ function ContaModal({ ctx, initTipo }) {
         )}
 
         <label className="label" style={{marginBottom:6}}>Categoria
-          {tipo==='pagar'&&<button onClick={()=>setAddingCat(v=>!v)} style={{marginLeft:8,fontSize:11,background:'transparent',border:`1px solid ${C.border}`,borderRadius:8,padding:'2px 8px',cursor:'pointer',color:C.text2}}>{addingCat?'Cancelar':'+ Nova'}</button>}
+          <button onClick={()=>setAddingCat(v=>!v)} style={{marginLeft:8,fontSize:11,background:'transparent',border:`1px solid ${C.border}`,borderRadius:8,padding:'2px 8px',cursor:'pointer',color:C.text2}}>{addingCat?'Cancelar':'+ Nova'}</button>
         </label>
         {addingCat&&(
           <div style={{display:'flex',gap:6,marginBottom:8}}>
@@ -2799,7 +2839,7 @@ function ContaModal({ ctx, initTipo }) {
                   border:`1px solid ${categoria===c?accent:C.border}`,fontSize:12,padding:'6px 12px'}}>
                 {c}
               </button>
-              {tipo==='pagar'&&!CATS_P_DEFAULT.includes(c)&&(
+              {!(tipo==='pagar'?CATS_P_DEFAULT:CATS_R_DEFAULT).includes(c)&&(
                 <button onClick={()=>removeCat(c)} style={{background:'transparent',border:'none',cursor:'pointer',color:'#ccc',fontSize:14,padding:'0 2px',lineHeight:1}}>×</button>
               )}
             </div>
@@ -2821,7 +2861,7 @@ function ContaModal({ ctx, initTipo }) {
           style={{width:'100%',background:ok?'linear-gradient(135deg,'+accent+','+(tipo==='receber'?'#166534':'#991b1b')+')':'#e5e7eb',
             border:'none',borderRadius:14,padding:15,color:ok?'white':'#9ca3af',fontWeight:800,
             cursor:ok?'pointer':'default',fontSize:15,fontFamily:'inherit'}}>
-          Salvar Conta
+          {editing?'Salvar Alterações':'Salvar Conta'}
         </button>
       </div>
     </div>
@@ -3006,6 +3046,30 @@ function Estoque({ ctx }) {
   const [fContato,setFContato]= useState('');
   const [fTipo,   setFTipo]   = useState('fornecedor');
   const [fEdit,   setFEdit]   = useState(null);
+  // form de sabor (criar/editar) — null = fechado, {} = novo, objeto = editando
+  const [saborForm, setSaborForm] = useState(null);
+  const [sfNome, setSfNome] = useState('');
+  const [sfCat,  setSfCat]  = useState('grande');
+  const [sfPreco,setSfPreco]= useState('');
+  const [sfDesc, setSfDesc] = useState('');
+
+  const abrirNovoSabor = (cat) => { setSaborForm({}); setSfNome(''); setSfCat(cat); setSfPreco(''); setSfDesc(''); };
+  const abrirEditarSabor = (s) => { setSaborForm(s); setSfNome(s.nome); setSfCat(s.cat); setSfPreco(String(s.preco||'')); setSfDesc(s.desc||''); };
+  const salvarSabor = () => {
+    const nome = sfNome.trim();
+    const preco = parseFloat(sfPreco);
+    if (!nome || !preco) return;
+    const dados = { nome, cat:sfCat, preco, desc:sfDesc.trim() };
+    if (saborForm && saborForm.id) ctx.updSabor(saborForm.id, dados);
+    else ctx.addSabor(dados);
+    setSaborForm(null);
+  };
+  const excluirSabor = () => {
+    if (saborForm && saborForm.id && window.confirm('Excluir este sabor? Ele deixará de aparecer no cardápio de pedidos.')) {
+      ctx.delSabor(saborForm.id);
+      setSaborForm(null);
+    }
+  };
 
   const salvarAjuste = () => {
     const qtd = parseInt(ajQtd);
@@ -3027,28 +3091,33 @@ function Estoque({ ctx }) {
     setFNome(''); setFContato(''); setFTipo('fornecedor');
   };
 
-  const grandes = PIZZAS_ESTOQUE.filter(p=>p.cat==='grande');
-  const minis   = PIZZAS_ESTOQUE.filter(p=>p.cat==='mini');
+  const grandes = ctx.sabores.filter(p=>p.cat==='grande');
+  const minis   = ctx.sabores.filter(p=>p.cat==='mini');
+  const doces   = ctx.sabores.filter(p=>p.cat==='doce');
 
   const StockRow = ({p}) => {
     const qtd = ctx.estoqueData[p.nome];
     const zerado = qtd !== undefined && qtd !== null && qtd === 0;
     const semControle = qtd === undefined || qtd === null;
     return (
-      <div onClick={()=>{setAjuste(p);setAjQtd('');setAjMotivo('');setAjTipo('entrada');}}
-        style={{display:'flex',justifyContent:'space-between',alignItems:'center',
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',
           padding:'12px 14px',background:zerado?'#fef2f2':'white',borderRadius:12,
-          marginBottom:6,border:`1px solid ${zerado?'#fecaca':C.border}`,cursor:'pointer'}}>
-        <div>
+          marginBottom:6,border:`1px solid ${zerado?'#fecaca':C.border}`}}>
+        <div onClick={()=>{setAjuste(p);setAjQtd('');setAjMotivo('');setAjTipo('entrada');}} style={{flex:1,cursor:'pointer'}}>
           <div style={{fontWeight:600,fontSize:14,color:zerado?C.red:C.text}}>{p.nome}</div>
+          <div style={{fontSize:11,color:C.text2,marginTop:2}}>{fmtBRL(p.preco||0)}</div>
           {zerado&&<div style={{fontSize:11,color:C.red,marginTop:2}}>⚠️ Sem estoque — bloqueado no cardápio</div>}
           {semControle&&<div style={{fontSize:11,color:C.text2,marginTop:2}}>Sem controle definido</div>}
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:8}}>
-          <div style={{fontWeight:900,fontSize:18,color:zerado?C.red:semControle?C.text2:C.green,minWidth:36,textAlign:'right'}}>
-            {semControle?'—':qtd}
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <div onClick={()=>{setAjuste(p);setAjQtd('');setAjMotivo('');setAjTipo('entrada');}} style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}>
+            <div style={{fontWeight:900,fontSize:18,color:zerado?C.red:semControle?C.text2:C.green,minWidth:36,textAlign:'right'}}>
+              {semControle?'—':qtd}
+            </div>
+            <div style={{fontSize:11,color:C.text2}}>un</div>
           </div>
-          <div style={{fontSize:11,color:C.text2}}>un</div>
+          <button onClick={()=>abrirEditarSabor(p)}
+            style={{background:'#f0ebe4',border:'none',borderRadius:10,padding:'6px 10px',cursor:'pointer',fontSize:11,fontFamily:'inherit'}}>Editar</button>
         </div>
       </div>
     );
@@ -3070,11 +3139,34 @@ function Estoque({ ctx }) {
 
       {subTab==='estoque'&&(
         <div>
-          <div style={{fontSize:12,color:C.text2,marginBottom:12}}>Toque em um sabor para ajustar o estoque. Sabores com estoque zero ficam bloqueados no cardápio online.</div>
-          <div className="section-label" style={{marginBottom:8}}>Pizzas Grandes</div>
+          <div style={{fontSize:12,color:C.text2,marginBottom:12}}>Toque em um sabor para ajustar o estoque, ou em "Editar" para alterar nome/preço/descrição. Alterações aqui aparecem automaticamente no site de pedidos. Sabores com estoque zero ficam bloqueados no cardápio online.</div>
+
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+            <div className="section-label">Pizzas Grandes</div>
+            <button onClick={()=>abrirNovoSabor('grande')}
+              style={{display:'flex',alignItems:'center',gap:4,background:'transparent',border:`1px solid ${C.border}`,borderRadius:10,padding:'4px 10px',cursor:'pointer',fontSize:11,fontWeight:700,color:C.red,fontFamily:'inherit'}}>
+              {I.plus(C.red,12)} Novo
+            </button>
+          </div>
           {grandes.map(p=><StockRow key={p.id} p={p}/>)}
-          <div className="section-label" style={{marginTop:14,marginBottom:8}}>Mini Pizzas</div>
+
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:14,marginBottom:8}}>
+            <div className="section-label">Mini Pizzas</div>
+            <button onClick={()=>abrirNovoSabor('mini')}
+              style={{display:'flex',alignItems:'center',gap:4,background:'transparent',border:`1px solid ${C.border}`,borderRadius:10,padding:'4px 10px',cursor:'pointer',fontSize:11,fontWeight:700,color:C.red,fontFamily:'inherit'}}>
+              {I.plus(C.red,12)} Novo
+            </button>
+          </div>
           {minis.map(p=><StockRow key={p.id} p={p}/>)}
+
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:14,marginBottom:8}}>
+            <div className="section-label">Pizzas Doces</div>
+            <button onClick={()=>abrirNovoSabor('doce')}
+              style={{display:'flex',alignItems:'center',gap:4,background:'transparent',border:`1px solid ${C.border}`,borderRadius:10,padding:'4px 10px',cursor:'pointer',fontSize:11,fontWeight:700,color:C.red,fontFamily:'inherit'}}>
+              {I.plus(C.red,12)} Novo
+            </button>
+          </div>
+          {doces.map(p=><StockRow key={p.id} p={p}/>)}
         </div>
       )}
 
@@ -3203,6 +3295,49 @@ function Estoque({ ctx }) {
                 fontWeight:800,cursor:(!ajQtd||!ajMotivo.trim())?'default':'pointer',fontSize:15,fontFamily:'inherit'}}>
               Confirmar Ajuste
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de criar/editar sabor */}
+      {saborForm&&(
+        <div className="overlay" onClick={()=>setSaborForm(null)}>
+          <div className="sheet" onClick={e=>e.stopPropagation()}>
+            <div className="sheet-handle"/>
+            <div style={{fontWeight:800,fontSize:17,marginBottom:16}}>{saborForm.id?'Editar Sabor':'Novo Sabor'}</div>
+
+            <label className="label">Categoria</label>
+            <div style={{display:'flex',gap:6,marginBottom:12}}>
+              {[['grande','Grande'],['mini','Mini'],['doce','Doce']].map(([k,l])=>(
+                <button key={k} className="chip" onClick={()=>setSfCat(k)}
+                  style={{flex:1,justifyContent:'center',background:sfCat===k?C.red:'white',color:sfCat===k?'white':C.text2,
+                    border:`1px solid ${sfCat===k?C.red:C.border}`,fontSize:12}}>
+                  {l}
+                </button>
+              ))}
+            </div>
+            <label className="label">Nome *</label>
+            <input className="input" placeholder="Ex: Margherita Especial" value={sfNome} onChange={e=>setSfNome(e.target.value)} style={{marginBottom:10}}/>
+            <label className="label">Preço (R$) *</label>
+            <input className="input" type="number" inputMode="decimal" placeholder="Ex: 55" value={sfPreco} onChange={e=>setSfPreco(e.target.value)} style={{marginBottom:10}}/>
+            <label className="label">Descrição</label>
+            <textarea className="input" placeholder="Ingredientes do sabor" value={sfDesc} onChange={e=>setSfDesc(e.target.value)}
+              style={{marginBottom:20,minHeight:70,resize:'vertical',fontFamily:'inherit'}}/>
+
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={salvarSabor} disabled={!sfNome.trim()||!sfPreco}
+                style={{flex:1,background:(!sfNome.trim()||!sfPreco)?'#e5e7eb':C.red,border:'none',borderRadius:14,padding:14,
+                  color:(!sfNome.trim()||!sfPreco)?'#9ca3af':'white',fontWeight:800,cursor:(!sfNome.trim()||!sfPreco)?'default':'pointer',
+                  fontSize:15,fontFamily:'inherit'}}>
+                Salvar
+              </button>
+              {saborForm.id&&(
+                <button onClick={excluirSabor}
+                  style={{background:'#fef2f2',border:`1px solid #fecaca`,borderRadius:14,padding:'14px 16px',cursor:'pointer',fontFamily:'inherit'}}>
+                  {I.trash(C.red,15)}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
