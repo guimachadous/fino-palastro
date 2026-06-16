@@ -313,7 +313,7 @@ function App({ currentUserEmail, onLogout }) {
   const delTrans  = id => setTrans(p => p.filter(t => t.id!==id));
   const addConta   = c => setContas(p => [{...c, id:genId(), criadoEm:today()}, ...p]);
   const updConta   = (id,d) => setContas(p => p.map(c => c.id===id?{...c,...d}:c));
-  const pagarConta = id => setContas(p => p.map(c => c.id===id?{...c,pago:true,pagoEm:today()}:c));
+  const pagarConta = (id,desconto=0) => setContas(p => p.map(c => c.id===id?{...c,pago:true,pagoEm:today(),desconto:desconto||0,valorRecebido:Math.max(0,(c.valor||0)-(desconto||0))}:c));
   const delConta   = id => setContas(p => p.filter(c => c.id!==id));
 
   const open  = (m,d=null)=>{ setModal(m); setMData(d); };
@@ -704,6 +704,7 @@ function App({ currentUserEmail, onLogout }) {
       {modal==='add_order'  && <OrderModal   ctx={ctx}/>}
       {modal==='add_event'  && <EventModal   ctx={ctx} event={mData}/>}
       {modal==='add_conta'  && <ContaModal   ctx={ctx} initTipo={mData?.tipo||'receber'} conta={mData?.id?mData:null}/>}
+      {modal==='pagar_conta' && <PagamentoModal ctx={ctx} conta={mData}/>}
       {modal==='view_order' && <OrderDetail  ctx={ctx} order={mData}/>}
       {modal==='view_event' && <EventDetail  ctx={ctx} event={mData}/>}
       {showCfg              && <SettingsModal  ctx={ctx}/>}
@@ -2542,7 +2543,7 @@ function Contas({ ctx }) {
           <div style={{textAlign:'right',flexShrink:0}}>
             <div style={{fontWeight:900,fontSize:16,color:venc?C.red:accent}}>{fmtBRL(c.valor)}</div>
             <div style={{display:'flex',gap:6,marginTop:8,justifyContent:'flex-end'}}>
-              <button onClick={()=>ctx.pagarConta(c.id)}
+              <button onClick={()=>ctx.open('pagar_conta', c)}
                 style={{background:accent,border:'none',borderRadius:10,color:'white',padding:'7px 12px',fontSize:12,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:4,fontFamily:'inherit'}}>
                 {I.check('white',13)} {tipo==='receber'?'Recebido':'Pago'}
               </button>
@@ -2652,10 +2653,14 @@ function Contas({ ctx }) {
               <div style={{display:'flex',gap:6,marginTop:3,flexWrap:'wrap'}}>
                 {c.pagoEm && <span style={{fontSize:11,color:'#aaa'}}>{tipo==='receber'?'Recebido':'Pago'} em {fmtDate(c.pagoEm)}</span>}
                 {c.notaFiscal && <span className="badge" style={{background:'#f0fdf4',color:'#666',fontSize:10}}>NF: {c.notaFiscal}</span>}
+                {!!c.desconto && <span className="badge" style={{background:'#fff7ed',color:'#b45309',fontSize:10}}>Desconto: {fmtBRL(c.desconto)}</span>}
               </div>
             </div>
             <div style={{display:'flex',alignItems:'center',gap:8}}>
-              <div style={{fontWeight:700,color:'#aaa',fontSize:14}}>{fmtBRL(c.valor)}</div>
+              <div style={{textAlign:'right'}}>
+                {!!c.desconto && <div style={{fontSize:11,color:'#ccc',textDecoration:'line-through'}}>{fmtBRL(c.valor)}</div>}
+                <div style={{fontWeight:700,color:'#aaa',fontSize:14}}>{fmtBRL(c.desconto?c.valorRecebido:c.valor)}</div>
+              </div>
               <button onClick={()=>ctx.delConta(c.id)} style={{background:'transparent',border:'none',cursor:'pointer',padding:4}}>{I.trash('#ccc',13)}</button>
             </div>
           </div>
@@ -2862,6 +2867,57 @@ function ContaModal({ ctx, initTipo, conta }) {
             border:'none',borderRadius:14,padding:15,color:ok?'white':'#9ca3af',fontWeight:800,
             cursor:ok?'pointer':'default',fontSize:15,fontFamily:'inherit'}}>
           {editing?'Salvar Alterações':'Salvar Conta'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── PAGAMENTO (com desconto) MODAL ──────────────────────────────────────────
+function PagamentoModal({ ctx, conta }) {
+  const { close } = ctx;
+  const [desconto, setDesconto] = useState('');
+  if (!conta) return null;
+
+  const tipo = conta.tipo;
+  const accent = tipo==='receber' ? C.green : C.red;
+  const valorOriginal = conta.valor || 0;
+  const descNum = Math.min(parseFloat((desconto||'0').replace(',','.'))||0, valorOriginal);
+  const valorFinal = Math.max(0, valorOriginal - descNum);
+
+  const confirmar = () => {
+    ctx.pagarConta(conta.id, descNum);
+    close();
+  };
+
+  return (
+    <div className="overlay" onClick={close}>
+      <div className="sheet" onClick={e=>e.stopPropagation()}>
+        <div className="sheet-handle"/>
+        <div style={{fontWeight:800,fontSize:17,marginBottom:4}}>
+          {tipo==='receber' ? 'Confirmar Recebimento' : 'Confirmar Pagamento'}
+        </div>
+        <div style={{fontSize:13,color:C.text2,marginBottom:16}}>{conta.descricao}</div>
+
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',background:'#f9f7f3',borderRadius:12,padding:'12px 14px',marginBottom:16}}>
+          <span style={{fontSize:13,color:C.text2,fontWeight:600}}>Valor original</span>
+          <span style={{fontSize:16,fontWeight:800}}>{fmtBRL(valorOriginal)}</span>
+        </div>
+
+        <label className="label">Desconto concedido (opcional)</label>
+        <input className="input" type="number" inputMode="decimal" placeholder="Ex: 10,00"
+          value={desconto} onChange={e=>setDesconto(e.target.value)} style={{marginBottom:16}}/>
+
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',background:'#fafaf8',border:`1px solid ${C.border}`,borderRadius:12,padding:'12px 14px',marginBottom:20}}>
+          <span style={{fontSize:13,fontWeight:700}}>{tipo==='receber'?'Valor recebido':'Valor pago'}</span>
+          <span style={{fontSize:18,fontWeight:900,color:accent}}>{fmtBRL(valorFinal)}</span>
+        </div>
+
+        <button onClick={confirmar}
+          style={{width:'100%',background:`linear-gradient(135deg,${accent},${tipo==='receber'?'#166534':'#991b1b'})`,
+            border:'none',borderRadius:14,padding:15,color:'white',fontWeight:800,
+            cursor:'pointer',fontSize:15,fontFamily:'inherit',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}>
+          {I.check('white',15)} Confirmar {tipo==='receber'?'Recebimento':'Pagamento'}
         </button>
       </div>
     </div>
