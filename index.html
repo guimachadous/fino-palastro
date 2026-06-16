@@ -600,7 +600,7 @@ function App({ currentUserEmail, onLogout }) {
     return () => clearInterval(id);
   }, [sheetId]);
 
-  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, paidEvent, contas, addConta, updConta, pagarConta, delConta, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus, newCardapioCount, catsPagar, setCatsPagar, catsReceber, setCatsReceber, unidadesMedida, setUnidadesMedida, fornecedores, addFornecedor, updFornecedor, delFornecedor, materiasPrimas, addMateriaPrima, updMateriaPrima, delMateriaPrima, estoqueData, estoqueHist, ajustarEstoque, delHistoricoEstoque, sabores, addSabor, updSabor, delSabor, currentUserEmail, onLogout };
+  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, paidEvent, contas, addConta, updConta, pagarConta, delConta, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus, newCardapioCount, catsPagar, setCatsPagar, catsReceber, setCatsReceber, unidadesMedida, setUnidadesMedida, fornecedores, addFornecedor, updFornecedor, delFornecedor, materiasPrimas, addMateriaPrima, updMateriaPrima, delMateriaPrima, estoqueData, estoqueHist, ajustarEstoque, debitarEstoquePedido, delHistoricoEstoque, sabores, addSabor, updSabor, delSabor, currentUserEmail, onLogout };
 
   const TABS = [
     {id:'dashboard',   lbl:'Início',   icon:I.home},
@@ -1264,8 +1264,25 @@ function TransModal({ ctx, initType='entrada' }) {
   const [desc,setDesc]=useState('');
   const [pay, setPay] =useState('Pix');
   const [date,setDate]=useState(today());
+  const [items,setItems]=useState([{productId:'',productName:'',cat:'grande',qty:1}]);
   const cats=type==='entrada'?CATS_IN:CATS_OUT;
-  const save=()=>{ if(!amt||!cat)return; ctx.addTrans({type,amount:parseFloat(amt),category:cat,description:desc,paymentMethod:pay,date}); ctx.close(); };
+  const precisaPizzas = type==='entrada' && (cat==='Venda Congelada' || cat==='Evento Express');
+  const addItem = c => setItems(p=>[...p,{productId:'',productName:'',cat:c,qty:1}]);
+  const updItem = (idx,k,v) => setItems(p=>p.map((it,i)=>{
+    if(i!==idx) return it;
+    if(k==='productId'){
+      const pr = ctx.sabores.find(s=>s.id===v);
+      return pr ? {...it,productId:pr.id,productName:pr.nome,cat:pr.cat} : {...it,productId:v};
+    }
+    return {...it,[k]:k==='qty'?Math.max(1,parseInt(v)||1):v};
+  }));
+  const save=()=>{
+    if(!amt||!cat)return;
+    const itensVendidos = precisaPizzas ? items.filter(i=>i.productId) : [];
+    ctx.addTrans({type,amount:parseFloat(amt),category:cat,description:desc,paymentMethod:pay,date,itens:itensVendidos});
+    if (itensVendidos.length) ctx.debitarEstoquePedido(itensVendidos);
+    ctx.close();
+  };
 
   return (
     <div className="overlay" onClick={ctx.close}>
@@ -1294,6 +1311,35 @@ function TransModal({ ctx, initType='entrada' }) {
             <button key={c} onClick={()=>setCat(c)} style={{padding:'8px 13px',borderRadius:20,border:'none',cursor:'pointer',fontSize:13,fontWeight:600,background:cat===c?(type==='entrada'?C.green:C.red):'#f0ebe4',color:cat===c?'white':C.brown,fontFamily:'inherit'}}>{c}</button>
           ))}
         </div>
+
+        {precisaPizzas && (
+          <div style={{marginBottom:16}}>
+            <label className="label">Pizzas vendidas (serão retiradas do estoque)</label>
+            {items.map((item,idx)=>(
+              <div key={idx} style={{display:'flex',gap:6,alignItems:'center',marginBottom:8}}>
+                <select className="input" style={{flex:1,padding:'10px 8px'}} value={item.productId} onChange={e=>updItem(idx,'productId',e.target.value)}>
+                  <option value="">Selecionar...</option>
+                  <optgroup label="Grandes">
+                    {ctx.sabores.filter(p=>p.cat==='grande').map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}
+                  </optgroup>
+                  <optgroup label="Mini">
+                    {ctx.sabores.filter(p=>p.cat==='mini').map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}
+                  </optgroup>
+                  <optgroup label="Doces">
+                    {ctx.sabores.filter(p=>p.cat==='doce').map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}
+                  </optgroup>
+                </select>
+                <input className="input" type="number" min="1" style={{width:56,padding:'10px 8px',textAlign:'center'}} value={item.qty} onChange={e=>updItem(idx,'qty',e.target.value)}/>
+                {items.length>1&&<button onClick={()=>setItems(items.filter((_,i)=>i!==idx))} style={{background:'none',border:'none',cursor:'pointer',flexShrink:0}}>{I.x(C.red,20)}</button>}
+              </div>
+            ))}
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={()=>addItem('grande')} style={{background:'#fff5f5',border:`1px solid #fca5a5`,borderRadius:10,padding:'8px 12px',fontSize:12,fontWeight:700,cursor:'pointer',color:C.red,fontFamily:'inherit'}}>+ Grande</button>
+              <button onClick={()=>addItem('mini')}   style={{background:'#fffbeb',border:`1px solid #fde68a`,borderRadius:10,padding:'8px 12px',fontSize:12,fontWeight:700,cursor:'pointer',color:'#b45309',fontFamily:'inherit'}}>+ Mini</button>
+              <button onClick={()=>addItem('doce')}   style={{background:'#f5f0ff',border:`1px solid #d8b4fe`,borderRadius:10,padding:'8px 12px',fontSize:12,fontWeight:700,cursor:'pointer',color:'#7e22ce',fontFamily:'inherit'}}>+ Doce</button>
+            </div>
+          </div>
+        )}
 
         <label className="label">Descrição (opcional)</label>
         <input className="input" style={{marginBottom:14}} placeholder="Ex: Venda para João" value={desc} onChange={e=>setDesc(e.target.value)}/>
