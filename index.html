@@ -168,8 +168,11 @@ const ultimoPrecoMP = (contas, mp) => {
   const unidade = c.unidade || mp.unidadePadrao || '';
   const { qtd, base } = toBaseQtd(c.quantidade, unidade);
   if (!qtd) return null;
+  const custoPorBase = c.valor / qtd; // R$ por unidade BASE (G ou ML) — usado nos cálculos de CMV
+  // R$ por unidade "natural" (KG/LT) para exibição — G e ML equivalem a 1/1000 de KG/LT
+  const custoExibicao = (base==='G'||base==='ML') ? custoPorBase*1000 : custoPorBase;
   return {
-    custoPorBase: c.valor / qtd, base, unidadeBase: baseLabel(base),
+    custoPorBase, custoExibicao, base, unidadeBase: baseLabel(base),
     precoOriginal: c.valor, qtdOriginal: c.quantidade, unidadeOriginal: unidade,
     data: c.vencimento || c.criadoEm, fornecedor: c.cliente || ''
   };
@@ -3153,7 +3156,7 @@ function MateriaPrimaTab({ ctx }) {
                       {m.unidadePadrao&&<span className="badge" style={{background:'#fdf4ff',color:'#7c3aed',fontSize:10,fontWeight:700}}>{m.unidadePadrao}</span>}
                       {compras.length>0&&<span className="badge" style={{background:'#eff6ff',color:C.blue,fontSize:10}}>{compras.length} compra{compras.length>1?'s':''} · {fmtBRL(totalGasto)}</span>}
                       {totalQtd>0&&m.unidadePadrao&&<span className="badge" style={{background:'#f0fdf4',color:C.green,fontSize:10}}>📦 {totalQtd} {m.unidadePadrao} total</span>}
-                      {ultimo&&<span className="badge" style={{background:'#fff7ed',color:'#b45309',fontSize:10,fontWeight:700}}>💰 {fmtBRL(ultimo.custoPorBase)}/{ultimo.unidadeBase}</span>}
+                      {ultimo&&<span className="badge" style={{background:'#fff7ed',color:'#b45309',fontSize:10,fontWeight:700}}>💰 {fmtBRL(ultimo.custoExibicao)}/{ultimo.unidadeBase}</span>}
                     </div>
                   </div>
                   <div style={{display:'flex',gap:6,alignItems:'center'}}>
@@ -3174,7 +3177,7 @@ function MateriaPrimaTab({ ctx }) {
                           <div style={{fontSize:11,color:'#b45309',fontWeight:700,letterSpacing:0.3}}>ÚLTIMO PREÇO PAGO</div>
                           <div style={{fontSize:11,color:C.text2,marginTop:2}}>{fmtDate(ultimo.data)}{ultimo.fornecedor?' · '+ultimo.fornecedor:''} · {ultimo.qtdOriginal} {ultimo.unidadeOriginal} = {fmtBRL(ultimo.precoOriginal)}</div>
                         </div>
-                        <div style={{fontWeight:900,fontSize:17,color:'#b45309'}}>{fmtBRL(ultimo.custoPorBase)}/{ultimo.unidadeBase}</div>
+                        <div style={{fontWeight:900,fontSize:17,color:'#b45309'}}>{fmtBRL(ultimo.custoExibicao)}/{ultimo.unidadeBase}</div>
                       </div>
                     )}
                     {compras.length===0
