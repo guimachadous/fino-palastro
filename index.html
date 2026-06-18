@@ -134,6 +134,66 @@ const today   = () => new Date().toISOString().split('T')[0];
 const fmtBRL  = v  => new Intl.NumberFormat('pt-BR', { style:'currency', currency:'BRL' }).format(v||0);
 const fmtDate = s  => s ? new Date(s+'T12:00:00').toLocaleDateString('pt-BR') : '—';
 
+// ── Custo de matéria-prima / CMV helpers ────────────────────────────────────
+// Converte qtd+unidade para uma "unidade base" (G para massa, ML para volume,
+// a própria unidade para UN/PCT/CX, que não têm conversão natural).
+const toBaseQtd = (qtd, unidade) => {
+  switch (unidade) {
+    case 'KG': return { qtd: (qtd||0)*1000, base: 'G' };
+    case 'G':  return { qtd: (qtd||0),       base: 'G' };
+    case 'LT': return { qtd: (qtd||0)*1000, base: 'ML' };
+    case 'ML': return { qtd: (qtd||0),       base: 'ML' };
+    default:   return { qtd: (qtd||0),       base: unidade || 'UN' };
+  }
+};
+const baseLabel = b => (b==='G' ? 'KG' : b==='ML' ? 'LT' : b);
+
+// Busca as compras (contas a pagar) referentes a uma matéria-prima pelo nome,
+// mais recentes primeiro. Usa correspondência exata e cai para "contém" se não achar.
+const comprasDeMP = (contas, mpNome) => {
+  const nomeLower = (mpNome||'').toLowerCase().trim();
+  if (!nomeLower) return [];
+  let lista = contas.filter(c => c.tipo==='pagar' && c.descricao && c.quantidade>0 && c.descricao.toLowerCase().trim()===nomeLower);
+  if (!lista.length) lista = contas.filter(c => c.tipo==='pagar' && c.descricao && c.quantidade>0 && c.descricao.toLowerCase().includes(nomeLower));
+  return lista.slice().sort((a,b)=>(b.vencimento||b.criadoEm||'') > (a.vencimento||a.criadoEm||'') ? 1 : -1);
+};
+
+// Último preço pago por uma matéria-prima, na unidade original da compra e,
+// quando possível (KG/G, LT/ML), normalizado para uma unidade "base" (KG ou LT).
+const ultimoPrecoMP = (contas, mp) => {
+  if (!mp) return null;
+  const compras = comprasDeMP(contas, mp.nome);
+  if (!compras.length) return null;
+  const c = compras[0];
+  const unidade = c.unidade || mp.unidadePadrao || '';
+  const { qtd, base } = toBaseQtd(c.quantidade, unidade);
+  if (!qtd) return null;
+  return {
+    custoPorBase: c.valor / qtd, base, unidadeBase: baseLabel(base),
+    precoOriginal: c.valor, qtdOriginal: c.quantidade, unidadeOriginal: unidade,
+    data: c.vencimento || c.criadoEm, fornecedor: c.cliente || ''
+  };
+};
+
+// Custo de um item de receita ({materiaPrimaId, quantidade, unidade}), usando o
+// último preço pago pela matéria-prima correspondente. Retorna 0 se a unidade do
+// item for incompatível com a unidade da última compra (ex: receita em UN vs compra em KG).
+const custoItemReceita = (contas, materiasPrimas, item) => {
+  const mp = materiasPrimas.find(m => m.id === item.materiaPrimaId);
+  if (!mp) return 0;
+  const info = ultimoPrecoMP(contas, mp);
+  if (!info) return 0;
+  const { qtd, base } = toBaseQtd(item.quantidade, item.unidade || mp.unidadePadrao || '');
+  if (base !== info.base) return 0;
+  return qtd * info.custoPorBase;
+};
+
+// CMV total de um sabor, somando o custo de cada item da sua receita.
+const cmvSabor = (contas, materiasPrimas, sabor) => {
+  if (!sabor || !Array.isArray(sabor.receita)) return 0;
+  return sabor.receita.reduce((s,item) => s + custoItemReceita(contas, materiasPrimas, item), 0);
+};
+
 const db = {
   get: (k,d) => { try { const v=localStorage.getItem(k); return v?JSON.parse(v):d; } catch { return d; } },
   set: (k,v) => {
@@ -3080,6 +3140,7 @@ function MateriaPrimaTab({ ctx }) {
             const totalGasto = compras.reduce((s,c)=>s+(c.valor||0),0);
             const totalQtd   = compras.reduce((s,c)=>s+(c.quantidade||0),0);
             const isOpen     = detalhe===m.id;
+            const ultimo     = ultimoPrecoMP(ctx.contas, m);
             return (
               <div key={m.id} style={{marginBottom:8,background:'white',borderRadius:14,
                 border:`1px solid ${C.border}`,overflow:'hidden'}}>
@@ -3092,6 +3153,7 @@ function MateriaPrimaTab({ ctx }) {
                       {m.unidadePadrao&&<span className="badge" style={{background:'#fdf4ff',color:'#7c3aed',fontSize:10,fontWeight:700}}>{m.unidadePadrao}</span>}
                       {compras.length>0&&<span className="badge" style={{background:'#eff6ff',color:C.blue,fontSize:10}}>{compras.length} compra{compras.length>1?'s':''} · {fmtBRL(totalGasto)}</span>}
                       {totalQtd>0&&m.unidadePadrao&&<span className="badge" style={{background:'#f0fdf4',color:C.green,fontSize:10}}>📦 {totalQtd} {m.unidadePadrao} total</span>}
+                      {ultimo&&<span className="badge" style={{background:'#fff7ed',color:'#b45309',fontSize:10,fontWeight:700}}>💰 {fmtBRL(ultimo.custoPorBase)}/{ultimo.unidadeBase}</span>}
                     </div>
                   </div>
                   <div style={{display:'flex',gap:6,alignItems:'center'}}>
@@ -3106,6 +3168,15 @@ function MateriaPrimaTab({ ctx }) {
                 {/* Relatório expandido */}
                 {isOpen&&(
                   <div style={{borderTop:`1px solid ${C.border}`,padding:'12px 14px',background:'#fafaf8'}}>
+                    {ultimo&&(
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',background:'#fff7ed',border:'1px solid #fde68a',borderRadius:10,padding:'10px 12px',marginBottom:12}}>
+                        <div>
+                          <div style={{fontSize:11,color:'#b45309',fontWeight:700,letterSpacing:0.3}}>ÚLTIMO PREÇO PAGO</div>
+                          <div style={{fontSize:11,color:C.text2,marginTop:2}}>{fmtDate(ultimo.data)}{ultimo.fornecedor?' · '+ultimo.fornecedor:''} · {ultimo.qtdOriginal} {ultimo.unidadeOriginal} = {fmtBRL(ultimo.precoOriginal)}</div>
+                        </div>
+                        <div style={{fontWeight:900,fontSize:17,color:'#b45309'}}>{fmtBRL(ultimo.custoPorBase)}/{ultimo.unidadeBase}</div>
+                      </div>
+                    )}
                     {compras.length===0
                       ? <div style={{fontSize:13,color:C.text2,textAlign:'center',padding:'8px 0'}}>Nenhuma compra registrada ainda.</div>
                       : <>
@@ -3154,14 +3225,26 @@ function Estoque({ ctx }) {
   const [sfCat,  setSfCat]  = useState('grande');
   const [sfPreco,setSfPreco]= useState('');
   const [sfDesc, setSfDesc] = useState('');
+  const [sfReceita, setSfReceita] = useState([]); // [{materiaPrimaId, quantidade, unidade}]
 
-  const abrirNovoSabor = (cat) => { setSaborForm({}); setSfNome(''); setSfCat(cat); setSfPreco(''); setSfDesc(''); };
-  const abrirEditarSabor = (s) => { setSaborForm(s); setSfNome(s.nome); setSfCat(s.cat); setSfPreco(String(s.preco||'')); setSfDesc(s.desc||''); };
+  const abrirNovoSabor = (cat) => { setSaborForm({}); setSfNome(''); setSfCat(cat); setSfPreco(''); setSfDesc(''); setSfReceita([]); };
+  const abrirEditarSabor = (s) => { setSaborForm(s); setSfNome(s.nome); setSfCat(s.cat); setSfPreco(String(s.preco||'')); setSfDesc(s.desc||''); setSfReceita(s.receita||[]); };
+  const addItemReceita = () => setSfReceita(p=>[...p,{materiaPrimaId:'',quantidade:'',unidade:''}]);
+  const updItemReceita = (idx,k,v) => setSfReceita(p=>p.map((it,i)=>{
+    if (i!==idx) return it;
+    if (k==='materiaPrimaId') {
+      const mp = ctx.materiasPrimas.find(m=>m.id===v);
+      return { ...it, materiaPrimaId:v, unidade: mp ? (mp.unidadePadrao||it.unidade) : it.unidade };
+    }
+    return { ...it, [k]:v };
+  }));
+  const rmItemReceita = idx => setSfReceita(p=>p.filter((_,i)=>i!==idx));
   const salvarSabor = () => {
     const nome = sfNome.trim();
     const preco = parseFloat(sfPreco);
     if (!nome || !preco) return;
-    const dados = { nome, cat:sfCat, preco, desc:sfDesc.trim() };
+    const receita = sfReceita.filter(it=>it.materiaPrimaId && it.quantidade).map(it=>({...it,quantidade:parseFloat(it.quantidade)||0}));
+    const dados = { nome, cat:sfCat, preco, desc:sfDesc.trim(), receita };
     if (saborForm && saborForm.id) ctx.updSabor(saborForm.id, dados);
     else ctx.addSabor(dados);
     setSaborForm(null);
@@ -3201,13 +3284,18 @@ function Estoque({ ctx }) {
     const qtd = ctx.estoqueData[p.nome];
     const zerado = qtd !== undefined && qtd !== null && qtd === 0;
     const semControle = qtd === undefined || qtd === null;
+    const cmv = cmvSabor(ctx.contas, ctx.materiasPrimas, p);
+    const temReceita = Array.isArray(p.receita) && p.receita.length>0;
     return (
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',
           padding:'12px 14px',background:zerado?'#fef2f2':'white',borderRadius:12,
           marginBottom:6,border:`1px solid ${zerado?'#fecaca':C.border}`}}>
         <div onClick={()=>{setAjuste(p);setAjQtd('');setAjMotivo('');setAjTipo('entrada');}} style={{flex:1,cursor:'pointer'}}>
           <div style={{fontWeight:600,fontSize:14,color:zerado?C.red:C.text}}>{p.nome}</div>
-          <div style={{fontSize:11,color:C.text2,marginTop:2}}>{fmtBRL(p.preco||0)}</div>
+          <div style={{display:'flex',gap:6,alignItems:'center',marginTop:2,flexWrap:'wrap'}}>
+            <span style={{fontSize:11,color:C.text2}}>{fmtBRL(p.preco||0)}</span>
+            {temReceita&&<span className="badge" style={{background:'#fff7ed',color:'#b45309',fontSize:10,fontWeight:700}}>CMV {fmtBRL(cmv)} ({p.preco?Math.round(cmv/p.preco*100):0}%)</span>}
+          </div>
           {zerado&&<div style={{fontSize:11,color:C.red,marginTop:2}}>⚠️ Sem estoque — bloqueado no cardápio</div>}
           {semControle&&<div style={{fontSize:11,color:C.text2,marginTop:2}}>Sem controle definido</div>}
         </div>
@@ -3425,6 +3513,48 @@ function Estoque({ ctx }) {
             <label className="label">Descrição</label>
             <textarea className="input" placeholder="Ingredientes do sabor" value={sfDesc} onChange={e=>setSfDesc(e.target.value)}
               style={{marginBottom:20,minHeight:70,resize:'vertical',fontFamily:'inherit'}}/>
+
+            <label className="label">Receituário (para cálculo de CMV)</label>
+            {sfReceita.map((item,idx)=>{
+              const mp = ctx.materiasPrimas.find(m=>m.id===item.materiaPrimaId);
+              const custoItem = item.materiaPrimaId && item.quantidade ? custoItemReceita(ctx.contas, ctx.materiasPrimas, {...item,quantidade:parseFloat(item.quantidade)||0}) : 0;
+              return (
+                <div key={idx} style={{marginBottom:8}}>
+                  <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                    <select className="input" style={{flex:1,padding:'10px 8px'}} value={item.materiaPrimaId} onChange={e=>updItemReceita(idx,'materiaPrimaId',e.target.value)}>
+                      <option value="">Matéria prima...</option>
+                      {ctx.materiasPrimas.map(m=><option key={m.id} value={m.id}>{m.nome}</option>)}
+                    </select>
+                    <input className="input" type="number" inputMode="decimal" placeholder="Qtd" style={{width:64,padding:'10px 8px',textAlign:'center'}}
+                      value={item.quantidade} onChange={e=>updItemReceita(idx,'quantidade',e.target.value)}/>
+                    <select className="input" style={{width:64,padding:'10px 4px'}} value={item.unidade||(mp?mp.unidadePadrao:'')||''} onChange={e=>updItemReceita(idx,'unidade',e.target.value)}>
+                      <option value="">Un.</option>
+                      {ctx.unidadesMedida.map(u=><option key={u} value={u}>{u}</option>)}
+                    </select>
+                    <button onClick={()=>rmItemReceita(idx)} style={{background:'none',border:'none',cursor:'pointer',flexShrink:0}}>{I.x(C.red,18)}</button>
+                  </div>
+                  {item.materiaPrimaId && item.quantidade && (
+                    <div style={{fontSize:11,color:custoItem?C.text2:C.red,marginTop:3,marginLeft:2}}>
+                      {custoItem ? `Custo: ${fmtBRL(custoItem)}` : 'Sem preço/unidade compatível para esta matéria prima'}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            <button onClick={addItemReceita} style={{display:'flex',alignItems:'center',gap:4,background:'transparent',border:`1px solid ${C.border}`,borderRadius:10,padding:'6px 12px',cursor:'pointer',fontSize:12,fontWeight:700,color:C.red,fontFamily:'inherit',marginBottom:14}}>
+              {I.plus(C.red,12)} Adicionar ingrediente
+            </button>
+
+            {sfReceita.some(it=>it.materiaPrimaId&&it.quantidade) && (() => {
+              const cmvAtual = sfReceita.filter(it=>it.materiaPrimaId&&it.quantidade).reduce((s,it)=>s+custoItemReceita(ctx.contas, ctx.materiasPrimas, {...it,quantidade:parseFloat(it.quantidade)||0}),0);
+              const precoNum = parseFloat(sfPreco)||0;
+              return (
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',background:'#fff7ed',border:'1px solid #fde68a',borderRadius:12,padding:'12px 14px',marginBottom:20}}>
+                  <span style={{fontSize:13,fontWeight:700,color:'#b45309'}}>CMV total</span>
+                  <span style={{fontSize:18,fontWeight:900,color:'#b45309'}}>{fmtBRL(cmvAtual)}{precoNum?` (${Math.round(cmvAtual/precoNum*100)}%)`:''}</span>
+                </div>
+              );
+            })()}
 
             <div style={{display:'flex',gap:8}}>
               <button onClick={salvarSabor} disabled={!sfNome.trim()||!sfPreco}
