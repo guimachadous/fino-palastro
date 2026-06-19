@@ -2869,6 +2869,10 @@ function ContaModal({ ctx, initTipo, conta }) {
   const accent = tipo==='receber' ? C.green : C.red;
   const fornNomes = (ctx.fornecedores||[]).map(f=>f.nome);
   const mpNomes   = (ctx.materiasPrimas||[]).map(m=>m.nome);
+  const [showMpSugg, setShowMpSugg] = useState(false);
+  const [showFornSugg, setShowFornSugg] = useState(false);
+  const mpFiltradas   = mpNomes.filter(n=>n.toLowerCase().includes(descricao.toLowerCase())).slice(0,8);
+  const fornFiltrados = fornNomes.filter(n=>n.toLowerCase().includes(cliente.toLowerCase())).slice(0,8);
 
   const onDescricaoChange = (val) => {
     setDescricao(val);
@@ -2896,14 +2900,23 @@ function ContaModal({ ctx, initTipo, conta }) {
         </div>
 
         <label className="label">Descrição *</label>
-        <input className="input" placeholder={tipo==='receber'?'Ex: Pedido de Ana Silva':'Ex: Mozzarella, Calabresa...'}
-          value={descricao} onChange={e=>onDescricaoChange(e.target.value)}
-          list={tipo==='pagar'?'lista-mp':undefined} style={{marginBottom:14}}/>
-        {tipo==='pagar'&&(
-          <datalist id="lista-mp">
-            {mpNomes.map(n=><option key={n} value={n}/>)}
-          </datalist>
-        )}
+        <div style={{position:'relative',marginBottom:14}}>
+          <input className="input" placeholder={tipo==='receber'?'Ex: Pedido de Ana Silva':'Ex: Mozzarella, Calabresa...'}
+            value={descricao} onChange={e=>onDescricaoChange(e.target.value)}
+            onFocus={()=>setShowMpSugg(true)}
+            onBlur={()=>setTimeout(()=>setShowMpSugg(false),150)}
+            style={{marginBottom:0}}/>
+          {tipo==='pagar' && showMpSugg && mpFiltradas.length>0 && (
+            <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'white',border:`1px solid ${C.border}`,borderRadius:12,boxShadow:'0 8px 20px rgba(0,0,0,0.12)',zIndex:20,maxHeight:180,overflowY:'auto'}}>
+              {mpFiltradas.map((n,i)=>(
+                <div key={n} onClick={()=>{onDescricaoChange(n);setShowMpSugg(false);}}
+                  style={{padding:'10px 14px',fontSize:14,cursor:'pointer',borderBottom:i<mpFiltradas.length-1?`1px solid ${C.border}`:'none'}}>
+                  {n}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:14}}>
           <div>
@@ -2976,11 +2989,23 @@ function ContaModal({ ctx, initTipo, conta }) {
         </div>
 
         <label className="label">Fornecedor / Cliente (opcional)</label>
-        <input className="input" placeholder="Nome ou selecione cadastrado" list="lista-fornec"
-          value={cliente} onChange={e=>setCliente(e.target.value)} style={{marginBottom:14}}/>
-        <datalist id="lista-fornec">
-          {fornNomes.map(n=><option key={n} value={n}/>)}
-        </datalist>
+        <div style={{position:'relative',marginBottom:14}}>
+          <input className="input" placeholder="Nome ou selecione cadastrado"
+            value={cliente} onChange={e=>setCliente(e.target.value)}
+            onFocus={()=>setShowFornSugg(true)}
+            onBlur={()=>setTimeout(()=>setShowFornSugg(false),150)}
+            style={{marginBottom:0}}/>
+          {showFornSugg && fornFiltrados.length>0 && (
+            <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'white',border:`1px solid ${C.border}`,borderRadius:12,boxShadow:'0 8px 20px rgba(0,0,0,0.12)',zIndex:20,maxHeight:180,overflowY:'auto'}}>
+              {fornFiltrados.map((n,i)=>(
+                <div key={n} onClick={()=>{setCliente(n);setShowFornSugg(false);}}
+                  style={{padding:'10px 14px',fontSize:14,cursor:'pointer',borderBottom:i<fornFiltrados.length-1?`1px solid ${C.border}`:'none'}}>
+                  {n}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <label className="label">Nota Fiscal (opcional)</label>
         <input className="input" placeholder="Número da NF"
