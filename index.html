@@ -150,12 +150,33 @@ const baseLabel = b => (b==='G' ? 'KG' : b==='ML' ? 'LT' : b);
 
 // Busca as compras (contas a pagar) referentes a uma matéria-prima pelo nome,
 // mais recentes primeiro. Usa correspondência exata e cai para "contém" se não achar.
+// Considera tanto contas "simples" (descricao/quantidade/valor no topo) quanto contas
+// com múltiplos itens (conta.itens: [{nome,quantidade,unidade,valor}]) — uma única conta
+// a pagar pode representar a compra de várias matérias-primas diferentes de uma vez.
 const comprasDeMP = (contas, mpNome) => {
   const nomeLower = (mpNome||'').toLowerCase().trim();
   if (!nomeLower) return [];
-  let lista = contas.filter(c => c.tipo==='pagar' && c.descricao && c.quantidade>0 && c.descricao.toLowerCase().trim()===nomeLower);
-  if (!lista.length) lista = contas.filter(c => c.tipo==='pagar' && c.descricao && c.quantidade>0 && c.descricao.toLowerCase().includes(nomeLower));
-  return lista.slice().sort((a,b)=>(b.vencimento||b.criadoEm||'') > (a.vencimento||a.criadoEm||'') ? 1 : -1);
+  const extrair = (matchFn) => {
+    const out = [];
+    contas.forEach(c => {
+      if (c.tipo!=='pagar') return;
+      if (Array.isArray(c.itens) && c.itens.length) {
+        c.itens.forEach(it => {
+          if (it && it.quantidade>0 && matchFn((it.nome||'').toLowerCase().trim())) {
+            out.push({ valor: it.valor||0, quantidade: it.quantidade, unidade: it.unidade,
+              vencimento: c.vencimento, criadoEm: c.criadoEm, cliente: c.cliente });
+          }
+        });
+      } else if (c.descricao && c.quantidade>0 && matchFn(c.descricao.toLowerCase().trim())) {
+        out.push({ valor: c.valor||0, quantidade: c.quantidade, unidade: c.unidade,
+          vencimento: c.vencimento, criadoEm: c.criadoEm, cliente: c.cliente });
+      }
+    });
+    return out;
+  };
+  let lista = extrair(n => n===nomeLower);
+  if (!lista.length) lista = extrair(n => n.includes(nomeLower));
+  return lista.sort((a,b)=>(b.vencimento||b.criadoEm||'') > (a.vencimento||a.criadoEm||'') ? 1 : -1);
 };
 
 // Último preço pago por uma matéria-prima, na unidade original da compra e,
@@ -2816,10 +2837,19 @@ function ContaModal({ ctx, initTipo, conta }) {
   const [unidade,     setUnidade]     = useState(conta?.unidade || '');
   const [novaUnidade, setNovaUnidade] = useState('');
   const [addingUn,    setAddingUn]    = useState(false);
+  const [itens,       setItens]       = useState(conta?.itens && conta.itens.length ? conta.itens.map(it=>({...it})) : []);
+  const [multiMode,   setMultiMode]   = useState(!!(conta?.itens && conta.itens.length));
+  const [openItemIdx, setOpenItemIdx] = useState(null);
 
   const cats = tipo==='pagar' ? ctx.catsPagar : ctx.catsReceber;
 
-  const ok = descricao.trim() && parseFloat(valor.replace(',','.'))>0;
+  const toNum = v => parseFloat(String(v||'').replace(',','.')) || 0;
+  const itensValidos = itens.filter(it => (it.nome||'').trim() && toNum(it.quantidade)>0 && toNum(it.valor)>0);
+  const totalItens = itensValidos.reduce((s,it)=>s+toNum(it.valor),0);
+
+  const ok = multiMode
+    ? itensValidos.length>0
+    : (descricao.trim() && parseFloat(valor.replace(',','.'))>0);
 
   const addCat = () => {
     const c = novaCat.trim();
@@ -2857,7 +2887,61 @@ function ContaModal({ ctx, initTipo, conta }) {
     if (unidade===u) setUnidade('');
   };
 
+  // ── Múltiplas matérias-primas em uma única conta a pagar ──────────────────
+  const startMulti = () => {
+    const first = {
+      nome: descricao.trim(),
+      quantidade: quantidade || '',
+      unidade: unidade || '',
+      valor: valor || '',
+    };
+    setItens([first, { nome:'', quantidade:'', unidade:'', valor:'' }]);
+    setMultiMode(true);
+  };
+
+  const cancelMulti = () => {
+    const first = itens[0] || {};
+    setDescricao(first.nome || '');
+    setQuantidade(first.quantidade!=null ? String(first.quantidade) : '');
+    setUnidade(first.unidade || '');
+    setValor(first.valor!=null ? String(first.valor) : '');
+    setItens([]);
+    setMultiMode(false);
+  };
+
+  const addItem = () => setItens(p => [...p, { nome:'', quantidade:'', unidade:'', valor:'' }]);
+  const removeItem = (idx) => setItens(p => p.filter((_,i)=>i!==idx));
+  const updateItem = (idx, patch) => {
+    setItens(p => p.map((it,i) => {
+      if (i!==idx) return it;
+      const next = {...it, ...patch};
+      if (patch.nome !== undefined && !next.unidade) {
+        const mp = (ctx.materiasPrimas||[]).find(m=>m.nome.toLowerCase()===patch.nome.toLowerCase());
+        if (mp && mp.unidadePadrao) next.unidade = mp.unidadePadrao;
+      }
+      return next;
+    }));
+  };
+
   const save = () => {
+    if (multiMode) {
+      if (!itensValidos.length) return;
+      const dados = {
+        tipo,
+        descricao: descricao.trim() || itensValidos.map(it=>it.nome.trim()).join(' + '),
+        valor: totalItens,
+        vencimento, categoria:categoria||cats[0],
+        cliente:cliente.trim(), notaFiscal:notaFiscal.trim(),
+        quantidade: null, unidade: null,
+        itens: itensValidos.map(it => ({
+          nome: it.nome.trim(), quantidade: toNum(it.quantidade), unidade: it.unidade||'', valor: toNum(it.valor),
+        })),
+      };
+      if (editing) ctx.updConta(conta.id, dados);
+      else ctx.addConta({...dados, origemTipo:'manual', pago:false, pagoEm:null});
+      close();
+      return;
+    }
     if (!ok) return;
     const dados = {
       tipo, descricao:descricao.trim(), valor:parseFloat(valor.replace(',','.'))||0,
@@ -2865,6 +2949,7 @@ function ContaModal({ ctx, initTipo, conta }) {
       cliente:cliente.trim(), notaFiscal:notaFiscal.trim(),
       quantidade: quantidade ? parseFloat(quantidade.replace(',','.')) : null,
       unidade: unidade || null,
+      itens: null,
     };
     if (editing) ctx.updConta(conta.id, dados);
     else ctx.addConta({...dados, origemTipo:'manual', pago:false, pagoEm:null});
@@ -2904,14 +2989,22 @@ function ContaModal({ ctx, initTipo, conta }) {
           ))}
         </div>
 
-        <label className="label">Descrição *</label>
+        <label className="label" style={{marginBottom:6}}>
+          {multiMode ? 'Descrição da compra (opcional)' : 'Descrição *'}
+          {tipo==='pagar' && !multiMode && (
+            <button onClick={startMulti} style={{marginLeft:8,fontSize:11,background:'transparent',border:`1px solid ${C.border}`,borderRadius:8,padding:'2px 8px',cursor:'pointer',color:C.text2}}>+ Outra matéria-prima</button>
+          )}
+          {tipo==='pagar' && multiMode && (
+            <button onClick={cancelMulti} style={{marginLeft:8,fontSize:11,background:'transparent',border:`1px solid ${C.border}`,borderRadius:8,padding:'2px 8px',cursor:'pointer',color:C.text2}}>Voltar a 1 item</button>
+          )}
+        </label>
         <div style={{position:'relative',marginBottom:14}}>
-          <input className="input" placeholder={tipo==='receber'?'Ex: Pedido de Ana Silva':'Ex: Mozzarella, Calabresa...'}
-            value={descricao} onChange={e=>onDescricaoChange(e.target.value)}
-            onFocus={()=>setShowMpSugg(true)}
+          <input className="input" placeholder={multiMode?'Ex: Compra de mussarela e calabresa - NF 123':(tipo==='receber'?'Ex: Pedido de Ana Silva':'Ex: Mozzarella, Calabresa...')}
+            value={descricao} onChange={e=>multiMode?setDescricao(e.target.value):onDescricaoChange(e.target.value)}
+            onFocus={()=>!multiMode&&setShowMpSugg(true)}
             onBlur={()=>setTimeout(()=>setShowMpSugg(false),150)}
             style={{marginBottom:0}}/>
-          {tipo==='pagar' && showMpSugg && mpFiltradas.length>0 && (
+          {tipo==='pagar' && !multiMode && showMpSugg && mpFiltradas.length>0 && (
             <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'white',border:`1px solid ${C.border}`,borderRadius:12,boxShadow:'0 8px 20px rgba(0,0,0,0.12)',zIndex:20,maxHeight:180,overflowY:'auto'}}>
               {mpFiltradas.map((n,i)=>(
                 <div key={n} onClick={()=>{onDescricaoChange(n);setShowMpSugg(false);}}
@@ -2926,8 +3019,14 @@ function ContaModal({ ctx, initTipo, conta }) {
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:14}}>
           <div>
             <label className="label">Valor (R$) *</label>
-            <input className="input" type="number" inputMode="decimal" placeholder="0,00"
-            value={valor} onChange={e=>setValor(e.target.value)}/>
+            {multiMode ? (
+              <div className="input" style={{display:'flex',alignItems:'center',background:'#f7f7f7',color:C.text2,fontWeight:700,boxSizing:'border-box'}}>
+                {fmtBRL(totalItens)}
+              </div>
+            ) : (
+              <input className="input" type="number" inputMode="decimal" placeholder="0,00"
+              value={valor} onChange={e=>setValor(e.target.value)}/>
+            )}
           </div>
           <div>
             <label className="label">Vencimento</label>
@@ -2935,7 +3034,7 @@ function ContaModal({ ctx, initTipo, conta }) {
           </div>
         </div>
 
-        {tipo==='pagar'&&(
+        {tipo==='pagar' && !multiMode && (
           <div style={{marginBottom:14}}>
             <label className="label" style={{marginBottom:6}}>Quantidade comprada
               <button onClick={()=>setAddingUn(v=>!v)} style={{marginLeft:8,fontSize:11,background:'transparent',border:`1px solid ${C.border}`,borderRadius:8,padding:'2px 8px',cursor:'pointer',color:C.text2}}>{addingUn?'Cancelar':'+ Nova unidade'}</button>
@@ -2965,6 +3064,54 @@ function ContaModal({ ctx, initTipo, conta }) {
             <input className="input" type="number" inputMode="decimal" placeholder={unidade ? `Qtd em ${unidade}` : 'Selecione a unidade acima'}
               value={quantidade} onChange={e=>setQuantidade(e.target.value)} disabled={!unidade}
               style={{maxWidth:180,marginBottom:0,opacity:unidade?1:0.45}}/>
+          </div>
+        )}
+
+        {tipo==='pagar' && multiMode && (
+          <div style={{marginBottom:14}}>
+            <label className="label" style={{marginBottom:6}}>Itens da compra</label>
+            {itens.map((it,idx)=>{
+              const itFiltradas = mpNomes.filter(n=>n.toLowerCase().includes((it.nome||'').toLowerCase())).slice(0,8);
+              return (
+                <div key={idx} style={{border:`1px solid ${C.border}`,borderRadius:12,padding:10,marginBottom:8}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                    <span style={{fontSize:11,fontWeight:700,color:C.text2}}>Item {idx+1}</span>
+                    {itens.length>1 && (
+                      <button onClick={()=>removeItem(idx)} style={{background:'transparent',border:'none',cursor:'pointer',color:'#ccc',fontSize:16,padding:0,lineHeight:1}}>×</button>
+                    )}
+                  </div>
+                  <div style={{position:'relative',marginBottom:8}}>
+                    <input className="input" placeholder="Matéria-prima"
+                      value={it.nome} onChange={e=>updateItem(idx,{nome:e.target.value})}
+                      onFocus={()=>setOpenItemIdx(idx)}
+                      onBlur={()=>setTimeout(()=>setOpenItemIdx(p=>p===idx?null:p),150)}
+                      style={{marginBottom:0}}/>
+                    {openItemIdx===idx && itFiltradas.length>0 && (
+                      <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'white',border:`1px solid ${C.border}`,borderRadius:12,boxShadow:'0 8px 20px rgba(0,0,0,0.12)',zIndex:20,maxHeight:180,overflowY:'auto'}}>
+                        {itFiltradas.map((n,i)=>(
+                          <div key={n} onClick={()=>{updateItem(idx,{nome:n});setOpenItemIdx(null);}}
+                            style={{padding:'10px 14px',fontSize:14,cursor:'pointer',borderBottom:i<itFiltradas.length-1?`1px solid ${C.border}`:'none'}}>
+                            {n}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
+                    <input className="input" type="number" inputMode="decimal" placeholder="Qtd"
+                      value={it.quantidade} onChange={e=>updateItem(idx,{quantidade:e.target.value})} style={{marginBottom:0}}/>
+                    <select className="input" value={it.unidade} onChange={e=>updateItem(idx,{unidade:e.target.value})} style={{marginBottom:0}}>
+                      <option value="">Unid.</option>
+                      {ctx.unidadesMedida.map(u=><option key={u} value={u}>{u}</option>)}
+                    </select>
+                    <input className="input" type="number" inputMode="decimal" placeholder="Valor R$"
+                      value={it.valor} onChange={e=>updateItem(idx,{valor:e.target.value})} style={{marginBottom:0}}/>
+                  </div>
+                </div>
+              );
+            })}
+            <button onClick={addItem} style={{background:'transparent',border:`1px dashed ${C.border}`,borderRadius:10,padding:'8px 14px',cursor:'pointer',color:C.text2,fontWeight:700,fontSize:13,width:'100%'}}>+ Adicionar item</button>
+            <div style={{textAlign:'right',marginTop:8,fontSize:13,color:C.text2}}>Total: <strong>{fmtBRL(totalItens)}</strong></div>
           </div>
         )}
 
