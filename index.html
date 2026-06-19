@@ -547,10 +547,15 @@ function App({ currentUserEmail, onLogout }) {
     const KS = {
       'fp_trans': setTrans, 'fp_orders': setOrders, 'fp_events': setEvents,
       'fp_products': setProducts, 'fp_contas': setContas,
+      'fp_cats_pagar': setCatsPagar, 'fp_unidades': setUnidadesMedida,
+      'fp_fornecedores': setFornecedores, 'fp_materias_primas': setMateriasPrimas,
+      'fp_estoque_hist': setEstoqueHist, 'fp_sabores': setSabores,
+      'fp_cats_receber': setCatsReceber,
     };
     const CS = {
       'fp_sheet_id': v => setSheetId(typeof v==='string'?v:''),
       'fp_opening_bal': v => setOpenBal(parseFloat(v)||0),
+      'fp_estoque': v => setEstoqueData(v && typeof v==='object' && !Array.isArray(v) ? v : {}),
     };
     Promise.all(Object.keys({...KS,...CS}).map(k =>
       window.__fsdb.collection('fp_data').doc(k).get()
