@@ -251,8 +251,8 @@ const PRODUCTS_DEFAULT = [
   { id:'m5', cat:'mini',   name:'Diavola',              price:28, desc:'Tomate picante, salame, pimenta calabresa, mozzarella' },
 ];
 
-const CATS_IN  = ['Venda Congelada','Evento ao Vivo','Evento Express','Outros'];
-const CATS_OUT = ['Insumos/Ingredientes','Embalagens','Despesa Fixa','Despesa Variável','Marketing','Outros'];
+const CATS_IN_DEFAULT  = ['Venda Congelada','Evento ao Vivo','Evento Express','Outros'];
+const CATS_OUT_DEFAULT = ['Insumos/Ingredientes','Embalagens','Despesa Fixa','Despesa Variável','Marketing','Outros'];
 const CATS_P_DEFAULT = ['Fornecedor','Ingredientes','Embalagem','Aluguel','Serviço','Outros'];
 const CATS_R_DEFAULT = ['Pedido','Evento','Serviço','Outros'];
 const UNIDADES_DEFAULT = ['KG','LT','PCT','UN','CX','G','ML'];
@@ -347,6 +347,8 @@ function App({ currentUserEmail, onLogout }) {
   const [estoqueHist,   setEstoqueHist]   = useState(()=>db.get('fp_estoque_hist', []));
   const [sabores,       setSabores]       = useState(()=>db.get('fp_sabores', PIZZAS_ESTOQUE_DEFAULT));
   const [catsReceber,   setCatsReceber]   = useState(()=>db.get('fp_cats_receber', CATS_R_DEFAULT));
+  const [catsIn,        setCatsIn]        = useState(()=>db.get('fp_cats_in', CATS_IN_DEFAULT));
+  const [catsOut,       setCatsOut]       = useState(()=>db.get('fp_cats_out', CATS_OUT_DEFAULT));
   const [alertKey, setAlertKey] = useState('');
   const [newCardapioCount, setNewCardapioCount] = useState(0);
   const [notifPerm, setNotifPerm] = useState(()=> 'Notification' in window ? Notification.permission : 'unsupported');
@@ -376,6 +378,8 @@ function App({ currentUserEmail, onLogout }) {
   useEffect(()=>{ if(initDone.current) db.set('fp_estoque_hist', estoqueHist);  }, [estoqueHist]);
   useEffect(()=>{ if(initDone.current) db.set('fp_sabores',      sabores);      }, [sabores]);
   useEffect(()=>{ if(initDone.current) db.set('fp_cats_receber', catsReceber);  }, [catsReceber]);
+  useEffect(()=>{ if(initDone.current) db.set('fp_cats_in',      catsIn);       }, [catsIn]);
+  useEffect(()=>{ if(initDone.current) db.set('fp_cats_out',     catsOut);      }, [catsOut]);
 
   const addTrans  = t => setTrans(p  => [{...t,  id:genId()}, ...p]);
   const addOrder  = o => {
@@ -572,6 +576,7 @@ function App({ currentUserEmail, onLogout }) {
       'fp_fornecedores': setFornecedores, 'fp_materias_primas': setMateriasPrimas,
       'fp_estoque_hist': setEstoqueHist, 'fp_sabores': setSabores,
       'fp_cats_receber': setCatsReceber,
+      'fp_cats_in': setCatsIn, 'fp_cats_out': setCatsOut,
     };
     const CS = {
       'fp_sheet_id': v => setSheetId(typeof v==='string'?v:''),
@@ -704,7 +709,7 @@ function App({ currentUserEmail, onLogout }) {
     return () => clearInterval(id);
   }, [sheetId]);
 
-  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, paidEvent, contas, addConta, updConta, pagarConta, delConta, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus, newCardapioCount, catsPagar, setCatsPagar, catsReceber, setCatsReceber, unidadesMedida, setUnidadesMedida, fornecedores, addFornecedor, updFornecedor, delFornecedor, materiasPrimas, addMateriaPrima, updMateriaPrima, delMateriaPrima, estoqueData, estoqueHist, ajustarEstoque, debitarEstoquePedido, delHistoricoEstoque, sabores, addSabor, updSabor, delSabor, currentUserEmail, onLogout };
+  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, paidEvent, contas, addConta, updConta, pagarConta, delConta, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus, newCardapioCount, catsPagar, setCatsPagar, catsReceber, setCatsReceber, catsIn, setCatsIn, catsOut, setCatsOut, unidadesMedida, setUnidadesMedida, fornecedores, addFornecedor, updFornecedor, delFornecedor, materiasPrimas, addMateriaPrima, updMateriaPrima, delMateriaPrima, estoqueData, estoqueHist, ajustarEstoque, debitarEstoquePedido, delHistoricoEstoque, sabores, addSabor, updSabor, delSabor, currentUserEmail, onLogout };
 
   const TABS = [
     {id:'dashboard',   lbl:'Início',   icon:I.home},
@@ -1369,8 +1374,27 @@ function TransModal({ ctx, initType='entrada' }) {
   const [pay, setPay] =useState('Pix');
   const [date,setDate]=useState(today());
   const [items,setItems]=useState([{productId:'',productName:'',cat:'grande',qty:1}]);
-  const cats=type==='entrada'?CATS_IN:CATS_OUT;
+  const [novaCat,   setNovaCat]   = useState('');
+  const [addingCat, setAddingCat] = useState(false);
+  const cats=type==='entrada'?ctx.catsIn:ctx.catsOut;
+  const accent = type==='entrada'?C.green:C.red;
   const precisaPizzas = type==='entrada' && (cat==='Venda Congelada' || cat==='Evento Express');
+  const addCat = () => {
+    const c = novaCat.trim();
+    if (!c || cats.includes(c)) return;
+    if (type==='entrada') ctx.setCatsIn(p=>[...p, c]);
+    else ctx.setCatsOut(p=>[...p, c]);
+    setCat(c);
+    setNovaCat('');
+    setAddingCat(false);
+  };
+  const removeCat = (c) => {
+    const defaults = type==='entrada'?CATS_IN_DEFAULT:CATS_OUT_DEFAULT;
+    if (defaults.includes(c)) return; // não remove padrão
+    if (type==='entrada') ctx.setCatsIn(p=>p.filter(x=>x!==c));
+    else ctx.setCatsOut(p=>p.filter(x=>x!==c));
+    if (cat===c) setCat('');
+  };
   const addItem = c => setItems(p=>[...p,{productId:'',productName:'',cat:c,qty:1}]);
   const updItem = (idx,k,v) => setItems(p=>p.map((it,i)=>{
     if(i!==idx) return it;
@@ -1409,10 +1433,24 @@ function TransModal({ ctx, initType='entrada' }) {
             style={{fontSize:40,fontWeight:900,border:'none',outline:'none',background:'transparent',textAlign:'center',width:'100%',color:type==='entrada'?C.green:C.red,fontFamily:'inherit'}}/>
         </div>
 
-        <label className="label">Categoria</label>
+        <label className="label" style={{marginBottom:6}}>Categoria
+          <button onClick={()=>setAddingCat(v=>!v)} style={{marginLeft:8,fontSize:11,background:'transparent',border:`1px solid ${C.border}`,borderRadius:8,padding:'2px 8px',cursor:'pointer',color:C.text2}}>{addingCat?'Cancelar':'+ Nova'}</button>
+        </label>
+        {addingCat&&(
+          <div style={{display:'flex',gap:6,marginBottom:8}}>
+            <input className="input" placeholder="Nome da categoria" value={novaCat} onChange={e=>setNovaCat(e.target.value)}
+              onKeyDown={e=>e.key==='Enter'&&addCat()} style={{flex:1,marginBottom:0}}/>
+            <button onClick={addCat} style={{background:accent,border:'none',borderRadius:10,color:'white',padding:'0 14px',fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>OK</button>
+          </div>
+        )}
         <div style={{display:'flex',flexWrap:'wrap',gap:7,marginBottom:16}}>
           {cats.map(c=>(
-            <button key={c} onClick={()=>setCat(c)} style={{padding:'8px 13px',borderRadius:20,border:'none',cursor:'pointer',fontSize:13,fontWeight:600,background:cat===c?(type==='entrada'?C.green:C.red):'#f0ebe4',color:cat===c?'white':C.brown,fontFamily:'inherit'}}>{c}</button>
+            <div key={c} style={{display:'flex',alignItems:'center',gap:2}}>
+              <button onClick={()=>setCat(c)} style={{padding:'8px 13px',borderRadius:20,border:'none',cursor:'pointer',fontSize:13,fontWeight:600,background:cat===c?accent:'#f0ebe4',color:cat===c?'white':C.brown,fontFamily:'inherit'}}>{c}</button>
+              {!(type==='entrada'?CATS_IN_DEFAULT:CATS_OUT_DEFAULT).includes(c)&&(
+                <button onClick={()=>removeCat(c)} style={{background:'transparent',border:'none',cursor:'pointer',color:'#ccc',fontSize:14,padding:'0 2px',lineHeight:1}}>×</button>
+              )}
+            </div>
           ))}
         </div>
 
