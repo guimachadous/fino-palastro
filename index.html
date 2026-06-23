@@ -589,7 +589,12 @@ function App({ currentUserEmail, onLogout }) {
     const CS = {
       'fp_sheet_id': v => setSheetId(typeof v==='string'?v:''),
       'fp_opening_bal': v => setOpenBal(parseFloat(v)||0),
-      'fp_estoque': v => setEstoqueData(v && typeof v==='object' && !Array.isArray(v) ? v : {}),
+      // Só sobrescreve o estoque local se a nuvem trouxer um objeto válido.
+      // Antes, qualquer leitura inválida/vazia da nuvem (ex: gravação que não
+      // completou) zerava TODO o estoque local — mesmo que o dispositivo
+      // tivesse os dados corretos salvos. Agora, se vier inválido, mantém o
+      // que já está no app em vez de apagar.
+      'fp_estoque': v => { if (v && typeof v==='object' && !Array.isArray(v)) setEstoqueData(v); },
     };
     Promise.all(Object.keys({...KS,...CS}).map(k =>
       window.__fsdb.collection('fp_data').doc(k).get()
@@ -599,8 +604,10 @@ function App({ currentUserEmail, onLogout }) {
       initDone.current = true;
       res.forEach(({k,v}) => {
         if (v===undefined) return;
+        // Para listas (KS), só aplica se a nuvem realmente trouxer um array —
+        // um valor corrompido/inesperado não deve apagar os dados locais.
+        if (KS[k]) { if (Array.isArray(v)) { try { localStorage.setItem(k,JSON.stringify(v)); } catch {} KS[k](v); } return; }
         try { localStorage.setItem(k,JSON.stringify(v)); } catch {}
-        if (KS[k]) KS[k](Array.isArray(v)?v:[]);
         if (CS[k]) CS[k](v);
       });
       setCloudStatus('ok');
