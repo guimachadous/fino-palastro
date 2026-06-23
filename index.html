@@ -394,9 +394,22 @@ function App({ currentUserEmail, onLogout }) {
   };
   const addEvent  = e => setEvents(p => [{...e,  id:genId(), createdAt:today()}, ...p]);
   const updOrder  = (id,d) => {
+    const old = orders.find(o => o.id===id);
     setOrders(p => p.map(o => o.id===id?{...o,...d}:o));
     if (d.status==='delivered' && !d.paid) {
       setContas(p => p.map(c => c.origemId===id&&c.tipo==='receber'&&!c.pago ? {...c,vencimento:today()} : c));
+    }
+    // Ao confirmar o pedido, debita o estoque automaticamente — separa os
+    // itens deste cliente. Se o pedido deixar de estar confirmado (volta pra
+    // pendente ou é cancelado) sem ter sido entregue, repõe o estoque.
+    if (old && d.status && d.status!==old.status) {
+      if (d.status==='confirmed' && !old.estoqueDebitado) {
+        debitarEstoquePedido(old.items||[]);
+        setOrders(p => p.map(o => o.id===id?{...o,estoqueDebitado:true}:o));
+      } else if (old.status==='confirmed' && (d.status==='pending'||d.status==='cancelled') && old.estoqueDebitado) {
+        reporEstoquePedido(old.items||[]);
+        setOrders(p => p.map(o => o.id===id?{...o,estoqueDebitado:false}:o));
+      }
     }
   };
   const updEvent  = (id,d) => setEvents(p => p.map(e => e.id===id?{...e,...d}:e));
@@ -463,6 +476,22 @@ function App({ currentUserEmail, onLogout }) {
         const nome = item.productName||item.nome||'';
         if (next[nome] !== undefined && next[nome] !== null) {
           next[nome] = Math.max(0, next[nome] - (item.qty||1));
+        }
+      });
+      try { window.__fsdb.collection('fp_data').doc('fp_estoque_cardapio').set({data:next,ts:Date.now()}).catch(()=>{}); } catch(e){}
+      return next;
+    });
+  };
+
+  // Repõe ao estoque os itens de um pedido que deixou de estar confirmado
+  // (voltou pra pendente ou foi cancelado) antes de ser entregue.
+  const reporEstoquePedido = (itens) => {
+    setEstoqueData(prev => {
+      const next = {...prev};
+      itens.forEach(item => {
+        const nome = item.productName||item.nome||'';
+        if (next[nome] !== undefined && next[nome] !== null) {
+          next[nome] = next[nome] + (item.qty||1);
         }
       });
       try { window.__fsdb.collection('fp_data').doc('fp_estoque_cardapio').set({data:next,ts:Date.now()}).catch(()=>{}); } catch(e){}
@@ -681,7 +710,8 @@ function App({ currentUserEmail, onLogout }) {
               fromCardapio: true
             };
             setOrders(p => [newOrder,...p]);
-            debitarEstoquePedido(orderItems);
+            // Estoque só é debitado quando o pedido for confirmado (ver updOrder) —
+            // assim os itens só "saem" depois de você revisar e confirmar o pedido.
             window.__fsdb.collection('fp_pedidos').doc(docId).update({status:'importado'}).catch(()=>{});
             added++;
           });
@@ -732,7 +762,7 @@ function App({ currentUserEmail, onLogout }) {
     return () => clearInterval(id);
   }, [sheetId]);
 
-  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, unpaidOrder, paidEvent, contas, addConta, updConta, pagarConta, delConta, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus, newCardapioCount, catsPagar, setCatsPagar, catsReceber, setCatsReceber, catsIn, setCatsIn, catsOut, setCatsOut, unidadesMedida, setUnidadesMedida, fornecedores, addFornecedor, updFornecedor, delFornecedor, clientes, addCliente, updCliente, delCliente, materiasPrimas, addMateriaPrima, updMateriaPrima, delMateriaPrima, estoqueData, estoqueHist, ajustarEstoque, debitarEstoquePedido, delHistoricoEstoque, sabores, addSabor, updSabor, delSabor, currentUserEmail, onLogout };
+  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, unpaidOrder, paidEvent, contas, addConta, updConta, pagarConta, delConta, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus, newCardapioCount, catsPagar, setCatsPagar, catsReceber, setCatsReceber, catsIn, setCatsIn, catsOut, setCatsOut, unidadesMedida, setUnidadesMedida, fornecedores, addFornecedor, updFornecedor, delFornecedor, clientes, addCliente, updCliente, delCliente, materiasPrimas, addMateriaPrima, updMateriaPrima, delMateriaPrima, estoqueData, estoqueHist, ajustarEstoque, debitarEstoquePedido, reporEstoquePedido, delHistoricoEstoque, sabores, addSabor, updSabor, delSabor, currentUserEmail, onLogout };
 
   const TABS = [
     {id:'dashboard',   lbl:'Início',   icon:I.home},
@@ -1542,8 +1572,20 @@ function OrderModal({ ctx }) {
   const [delDate, setDelDate] = useState('');
   const [addr,    setAddr]    = useState('');
   const [notes,   setNotes]   = useState('');
+  const [showClienteSugg, setShowClienteSugg] = useState(false);
 
   const total=items.reduce((s,i)=>s+(i.qty*i.unitPrice),0);
+
+  // Sugestões a partir dos clientes já cadastrados (aba Clientes, no Estoque)
+  const clientesFiltrados = (ctx.clientes||[])
+    .filter(c=>c.nome.toLowerCase().includes(client.toLowerCase()))
+    .slice(0,8);
+  const selecionarCliente = (c) => {
+    setClient(c.nome);
+    if (c.whatsapp) setWa(c.whatsapp);
+    if (c.endereco) setAddr(c.endereco);
+    setShowClienteSugg(false);
+  };
 
   const updItem=(idx,field,val)=>{
     const n=[...items];
@@ -1568,7 +1610,24 @@ function OrderModal({ ctx }) {
         </div>
 
         <label className="label">Nome do cliente *</label>
-        <input className="input" style={{marginBottom:14}} placeholder="Nome completo" value={client} onChange={e=>setClient(e.target.value)}/>
+        <div style={{position:'relative',marginBottom:14}}>
+          <input className="input" placeholder="Nome completo ou selecione cadastrado" value={client}
+            onChange={e=>{setClient(e.target.value);setShowClienteSugg(true);}}
+            onFocus={()=>setShowClienteSugg(true)}
+            onBlur={()=>setTimeout(()=>setShowClienteSugg(false),150)}
+            style={{marginBottom:0}}/>
+          {showClienteSugg && clientesFiltrados.length>0 && (
+            <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'white',border:`1px solid ${C.border}`,borderRadius:12,boxShadow:'0 8px 20px rgba(0,0,0,0.12)',zIndex:20,maxHeight:180,overflowY:'auto'}}>
+              {clientesFiltrados.map((c,i)=>(
+                <div key={c.id} onClick={()=>selecionarCliente(c)}
+                  style={{padding:'10px 14px',fontSize:14,cursor:'pointer',borderBottom:i<clientesFiltrados.length-1?`1px solid ${C.border}`:'none'}}>
+                  <div style={{fontWeight:600}}>{c.nome}</div>
+                  {c.whatsapp&&<div style={{fontSize:11,color:C.text2}}>{c.whatsapp}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <label className="label">WhatsApp</label>
         <input className="input" type="tel" inputMode="tel" style={{marginBottom:16}} placeholder="(11) 99999-9999" value={wa} onChange={e=>setWa(e.target.value)}/>
@@ -1733,7 +1792,15 @@ function EventModal({ ctx, event }) {
 function OrderDetail({ ctx, order }) {
   const [cur,setCur]=useState(order);
   if(!order)return null;
-  const setStatus=s=>{ ctx.updOrder(order.id,{status:s}); setCur({...cur,status:s}); };
+  const setStatus=s=>{
+    ctx.updOrder(order.id,{status:s});
+    // Espelha localmente o efeito no estoque (debita ao confirmar, repõe se
+    // voltar pra pendente/cancelado antes de ser entregue) pra refletir na UI.
+    let estoqueDebitado = cur.estoqueDebitado;
+    if (s==='confirmed' && !estoqueDebitado) estoqueDebitado = true;
+    else if (cur.status==='confirmed' && (s==='pending'||s==='cancelled') && estoqueDebitado) estoqueDebitado = false;
+    setCur({...cur,status:s,estoqueDebitado});
+  };
   const handlePaid=()=>{ ctx.paidOrder(order); ctx.close(); };
   const handleUnpaid=()=>{
     if (!window.confirm('Desfazer o pagamento deste pedido? O lançamento financeiro será removido e o pedido volta para "Pendente".')) return;
@@ -1787,6 +1854,11 @@ function OrderDetail({ ctx, order }) {
                 <button key={s} onClick={()=>setStatus(s)} style={{padding:'8px 14px',borderRadius:20,border:'none',cursor:'pointer',fontSize:13,fontWeight:700,background:cur.status===s?C.text:'#f0ebe4',color:cur.status===s?'white':C.brown,fontFamily:'inherit'}}>{S_LBL[s]}</button>
               ))}
             </div>
+            {cur.estoqueDebitado && (
+              <div style={{marginTop:10,display:'flex',alignItems:'center',gap:6,fontSize:12,color:C.green,fontWeight:700}}>
+                {I.check(C.green,14)} Itens já separados do estoque
+              </div>
+            )}
           </div>
         )}
 
@@ -2726,6 +2798,7 @@ function UsuariosSection({ ctx }) {
 function Contas({ ctx }) {
   const [tipo, setTipo] = useState('receber');
   const [showPagas, setShowPagas] = useState(false);
+  const [view, setView] = useState('lista'); // 'lista' | 'calendario'
 
   const tod = today();
   const isVencido = c => !c.pago && c.vencimento && c.vencimento < tod;
@@ -2734,6 +2807,29 @@ function Contas({ ctx }) {
     const diff = Math.ceil((new Date(c.vencimento+'T12:00:00') - new Date(tod+'T12:00:00')) / 86400000);
     return diff;
   };
+
+  // ── Calendário ──
+  const [calRef, setCalRef] = useState(() => { const [y,m] = tod.split('-'); return {y:+y, m:+m}; }); // m: 1-12
+  const [selDay, setSelDay] = useState(tod);
+  const pad2 = n => String(n).padStart(2,'0');
+
+  const contasPorDia = {};
+  ctx.contas.forEach(c => {
+    if (!c.vencimento || c.pago) return;
+    if (!contasPorDia[c.vencimento]) contasPorDia[c.vencimento] = {pagar:[], receber:[]};
+    contasPorDia[c.vencimento][c.tipo].push(c);
+  });
+
+  const diasNoMes   = new Date(calRef.y, calRef.m, 0).getDate();
+  const primeiroDia = new Date(calRef.y, calRef.m-1, 1).getDay(); // 0=Dom
+  const mesLabel    = new Date(calRef.y, calRef.m-1, 1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+  const prevMonth   = () => setCalRef(r => r.m===1  ? {y:r.y-1,m:12} : {y:r.y,m:r.m-1});
+  const nextMonth   = () => setCalRef(r => r.m===12 ? {y:r.y+1,m:1}  : {y:r.y,m:r.m+1});
+
+  const diaSel = contasPorDia[selDay] || {pagar:[],receber:[]};
+  const contasDoDia = [...diaSel.receber, ...diaSel.pagar];
+  const totalDiaReceber = diaSel.receber.reduce((s,c)=>s+c.valor,0);
+  const totalDiaPagar   = diaSel.pagar.reduce((s,c)=>s+c.valor,0);
 
   const receber = ctx.contas.filter(c => c.tipo==='receber');
   const pagar   = ctx.contas.filter(c => c.tipo==='pagar');
@@ -2848,6 +2944,118 @@ function Contas({ ctx }) {
         </button>
       </div>
 
+      {/* View toggle */}
+      <div style={{display:'flex',gap:8,marginBottom:14}}>
+        {[['lista','📋 Lista'],['calendario','📅 Calendário']].map(([k,l])=>(
+          <button key={k} className="chip" onClick={()=>setView(k)}
+            style={{background:view===k?C.text:'white',color:view===k?'white':C.text2,
+              border:`1px solid ${view===k?C.text:C.border}`,fontSize:13,padding:'8px 16px'}}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {view==='calendario' && <>
+        {/* Navegação do mês */}
+        <div className="card" style={{marginBottom:14}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+            <button onClick={prevMonth} style={{background:'#f0ebe4',border:'none',borderRadius:10,width:32,height:32,cursor:'pointer',fontSize:15,fontFamily:'inherit'}}>‹</button>
+            <div style={{fontWeight:800,fontSize:15,textTransform:'capitalize'}}>{mesLabel}</div>
+            <button onClick={nextMonth} style={{background:'#f0ebe4',border:'none',borderRadius:10,width:32,height:32,cursor:'pointer',fontSize:15,fontFamily:'inherit'}}>›</button>
+          </div>
+
+          {/* Cabeçalho dos dias da semana */}
+          <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:4,marginBottom:6}}>
+            {['D','S','T','Q','Q','S','S'].map((d,i)=>(
+              <div key={i} style={{textAlign:'center',fontSize:11,fontWeight:700,color:C.text2}}>{d}</div>
+            ))}
+          </div>
+
+          {/* Grade de dias */}
+          <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:4}}>
+            {Array.from({length:primeiroDia}).map((_,i)=><div key={'b'+i}/>)}
+            {Array.from({length:diasNoMes}).map((_,i)=>{
+              const d = i+1;
+              const dateStr = `${calRef.y}-${pad2(calRef.m)}-${pad2(d)}`;
+              const info = contasPorDia[dateStr];
+              const isHoje = dateStr===tod;
+              const isSel  = dateStr===selDay;
+              const temPagar   = info && info.pagar.length>0;
+              const temReceber = info && info.receber.length>0;
+              return (
+                <button key={d} onClick={()=>setSelDay(dateStr)}
+                  style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,
+                    aspectRatio:'1',borderRadius:10,cursor:'pointer',fontFamily:'inherit',
+                    background:isSel?C.text:isHoje?'#f0ebe4':'transparent',
+                    border:isHoje&&!isSel?`1.5px solid ${C.text}`:'1px solid transparent',
+                    color:isSel?'white':C.text}}>
+                  <span style={{fontSize:13,fontWeight:isHoje||isSel?800:500}}>{d}</span>
+                  <span style={{display:'flex',gap:2,height:5}}>
+                    {temReceber && <span style={{width:5,height:5,borderRadius:'50%',background:isSel?'white':C.green}}/>}
+                    {temPagar && <span style={{width:5,height:5,borderRadius:'50%',background:isSel?'white':C.red}}/>}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Detalhe do dia selecionado */}
+        <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}>
+          <div className="section-label" style={{marginBottom:0}}>{fmtDate(selDay)}</div>
+        </div>
+        {(totalDiaReceber>0 || totalDiaPagar>0) && (
+          <div style={{display:'flex',gap:10,marginBottom:10}}>
+            {totalDiaReceber>0 && <div style={{flex:1,background:'#f0fdf4',borderRadius:12,padding:'8px 12px'}}>
+              <div style={{fontSize:10,color:C.green,fontWeight:700}}>A RECEBER</div>
+              <div style={{fontSize:15,fontWeight:800,color:C.green}}>{fmtBRL(totalDiaReceber)}</div>
+            </div>}
+            {totalDiaPagar>0 && <div style={{flex:1,background:'#fef2f2',borderRadius:12,padding:'8px 12px'}}>
+              <div style={{fontSize:10,color:C.red,fontWeight:700}}>A PAGAR</div>
+              <div style={{fontSize:15,fontWeight:800,color:C.red}}>{fmtBRL(totalDiaPagar)}</div>
+            </div>}
+          </div>
+        )}
+        {contasDoDia.length===0 ? (
+          <div style={{textAlign:'center',padding:'30px 0',color:C.text2,fontSize:13}}>Nenhuma conta para este dia.</div>
+        ) : (
+          contasDoDia.map(c=>{
+            const a = c.tipo==='receber' ? C.green : C.red;
+            return (
+              <div key={c.id} className="card" style={{marginBottom:10}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+                  <div style={{flex:1,marginRight:10}}>
+                    <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
+                      <span className="badge" style={{background:c.tipo==='receber'?'#f0fdf4':'#fef2f2',color:a,fontSize:10}}>
+                        {c.tipo==='receber'?'📥 A receber':'📤 A pagar'}</span>
+                      {c.pago && <span className="badge" style={{background:'#f5f5f5',color:'#666',fontSize:10}}>✓ {c.tipo==='receber'?'Recebido':'Pago'}</span>}
+                    </div>
+                    <div style={{fontWeight:700,fontSize:15}}>{c.descricao}</div>
+                    {c.cliente && <div style={{fontSize:12,color:C.text2,marginTop:2}}>{c.cliente}</div>}
+                  </div>
+                  <div style={{textAlign:'right',flexShrink:0}}>
+                    <div style={{fontWeight:900,fontSize:16,color:a}}>{fmtBRL(c.valor)}</div>
+                    {!c.pago && (
+                      <div style={{display:'flex',gap:6,marginTop:8,justifyContent:'flex-end'}}>
+                        <button onClick={()=>ctx.open('pagar_conta', c)}
+                          style={{background:a,border:'none',borderRadius:10,color:'white',padding:'7px 12px',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
+                          {c.tipo==='receber'?'Recebido':'Pago'}
+                        </button>
+                        <button onClick={()=>ctx.open('add_conta', c)}
+                          style={{background:'#f0ebe4',border:'none',borderRadius:10,padding:'7px 10px',cursor:'pointer',fontSize:12,fontWeight:700,fontFamily:'inherit'}}>
+                          Editar
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </>}
+
+      {view==='lista' && <>
       {/* Vencidos section */}
       {vencidos.length>0 && <>
         <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}>
@@ -2906,6 +3114,7 @@ function Contas({ ctx }) {
             </div>
           </div>
         ))}
+      </>}
       </>}
     </div>
   );
