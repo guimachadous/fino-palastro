@@ -342,6 +342,7 @@ function App({ currentUserEmail, onLogout }) {
   const [catsPagar,     setCatsPagar]     = useState(()=>db.get('fp_cats_pagar', CATS_P_DEFAULT));
   const [unidadesMedida,setUnidadesMedida]= useState(()=>db.get('fp_unidades', UNIDADES_DEFAULT));
   const [fornecedores,  setFornecedores]  = useState(()=>db.get('fp_fornecedores', []));
+  const [clientes,      setClientes]      = useState(()=>db.get('fp_clientes', []));
   const [materiasPrimas,setMateriasPrimas]= useState(()=>db.get('fp_materias_primas', []));
   const [estoqueData,   setEstoqueData]   = useState(()=>db.get('fp_estoque', {}));
   const [estoqueHist,   setEstoqueHist]   = useState(()=>db.get('fp_estoque_hist', []));
@@ -373,6 +374,7 @@ function App({ currentUserEmail, onLogout }) {
   useEffect(()=>{ if(initDone.current) db.set('fp_cats_pagar',   catsPagar);    }, [catsPagar]);
   useEffect(()=>{ if(initDone.current) db.set('fp_unidades',    unidadesMedida);}, [unidadesMedida]);
   useEffect(()=>{ if(initDone.current) db.set('fp_fornecedores',    fornecedores);    }, [fornecedores]);
+  useEffect(()=>{ if(initDone.current) db.set('fp_clientes',        clientes);        }, [clientes]);
   useEffect(()=>{ if(initDone.current) db.set('fp_materias_primas', materiasPrimas);  }, [materiasPrimas]);
   useEffect(()=>{ if(initDone.current) db.set('fp_estoque',      estoqueData);  }, [estoqueData]);
   useEffect(()=>{ if(initDone.current) db.set('fp_estoque_hist', estoqueHist);  }, [estoqueHist]);
@@ -426,6 +428,11 @@ function App({ currentUserEmail, onLogout }) {
   const addFornecedor = f => setFornecedores(p=>[{...f,id:genId(),criadoEm:today()},...p]);
   const updFornecedor = (id,d) => setFornecedores(p=>p.map(f=>f.id===id?{...f,...d}:f));
   const delFornecedor = id => setFornecedores(p=>p.filter(f=>f.id!==id));
+
+  // Clientes
+  const addCliente = c => setClientes(p=>[{...c,id:genId(),criadoEm:today()},...p]);
+  const updCliente = (id,d) => setClientes(p=>p.map(c=>c.id===id?{...c,...d}:c));
+  const delCliente = id => setClientes(p=>p.filter(c=>c.id!==id));
   const addMateriaPrima = m => setMateriasPrimas(p=>[{...m,id:genId(),criadoEm:today()},...p]);
   const updMateriaPrima = (id,d) => setMateriasPrimas(p=>p.map(m=>m.id===id?{...m,...d}:m));
   const delMateriaPrima = id => setMateriasPrimas(p=>p.filter(m=>m.id!==id));
@@ -582,6 +589,7 @@ function App({ currentUserEmail, onLogout }) {
       'fp_products': setProducts, 'fp_contas': setContas,
       'fp_cats_pagar': setCatsPagar, 'fp_unidades': setUnidadesMedida,
       'fp_fornecedores': setFornecedores, 'fp_materias_primas': setMateriasPrimas,
+      'fp_clientes': setClientes,
       'fp_estoque_hist': setEstoqueHist, 'fp_sabores': setSabores,
       'fp_cats_receber': setCatsReceber,
       'fp_cats_in': setCatsIn, 'fp_cats_out': setCatsOut,
@@ -724,7 +732,7 @@ function App({ currentUserEmail, onLogout }) {
     return () => clearInterval(id);
   }, [sheetId]);
 
-  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, unpaidOrder, paidEvent, contas, addConta, updConta, pagarConta, delConta, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus, newCardapioCount, catsPagar, setCatsPagar, catsReceber, setCatsReceber, catsIn, setCatsIn, catsOut, setCatsOut, unidadesMedida, setUnidadesMedida, fornecedores, addFornecedor, updFornecedor, delFornecedor, materiasPrimas, addMateriaPrima, updMateriaPrima, delMateriaPrima, estoqueData, estoqueHist, ajustarEstoque, debitarEstoquePedido, delHistoricoEstoque, sabores, addSabor, updSabor, delSabor, currentUserEmail, onLogout };
+  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, unpaidOrder, paidEvent, contas, addConta, updConta, pagarConta, delConta, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus, newCardapioCount, catsPagar, setCatsPagar, catsReceber, setCatsReceber, catsIn, setCatsIn, catsOut, setCatsOut, unidadesMedida, setUnidadesMedida, fornecedores, addFornecedor, updFornecedor, delFornecedor, clientes, addCliente, updCliente, delCliente, materiasPrimas, addMateriaPrima, updMateriaPrima, delMateriaPrima, estoqueData, estoqueHist, ajustarEstoque, debitarEstoquePedido, delHistoricoEstoque, sabores, addSabor, updSabor, delSabor, currentUserEmail, onLogout };
 
   const TABS = [
     {id:'dashboard',   lbl:'Início',   icon:I.home},
@@ -3487,7 +3495,7 @@ function MateriaPrimaTab({ ctx }) {
 }
 
 function Estoque({ ctx }) {
-  const [subTab, setSubTab] = useState('estoque'); // 'estoque'|'mp'|'fornecedores'|'historico'
+  const [subTab, setSubTab] = useState('estoque'); // 'estoque'|'mp'|'fornecedores'|'clientes'|'historico'
   const [ajuste, setAjuste] = useState(null); // { nome, cat } da pizza selecionada
   const [ajQtd,  setAjQtd]  = useState('');
   const [ajTipo, setAjTipo] = useState('entrada');
@@ -3497,6 +3505,12 @@ function Estoque({ ctx }) {
   const [fContato,setFContato]= useState('');
   const [fTipo,   setFTipo]   = useState('fornecedor');
   const [fEdit,   setFEdit]   = useState(null);
+  // form de cliente (criar/editar)
+  const [cNome,    setCNome]    = useState('');
+  const [cWhats,   setCWhats]   = useState('');
+  const [cEndereco,setCEndereco]= useState('');
+  const [cObs,     setCObs]     = useState('');
+  const [cEdit,    setCEdit]    = useState(null);
   // form de sabor (criar/editar) — null = fechado, {} = novo, objeto = editando
   const [saborForm, setSaborForm] = useState(null);
   const [sfNome, setSfNome] = useState('');
@@ -3554,6 +3568,18 @@ function Estoque({ ctx }) {
     setFNome(''); setFContato(''); setFTipo('fornecedor');
   };
 
+  const salvarCliente = () => {
+    const nome = cNome.trim();
+    if (!nome) return;
+    if (cEdit) {
+      ctx.updCliente(cEdit.id, {nome, whatsapp:cWhats.trim(), endereco:cEndereco.trim(), obs:cObs.trim()});
+      setCEdit(null);
+    } else {
+      ctx.addCliente({nome, whatsapp:cWhats.trim(), endereco:cEndereco.trim(), obs:cObs.trim()});
+    }
+    setCNome(''); setCWhats(''); setCEndereco(''); setCObs('');
+  };
+
   const grandes = ctx.sabores.filter(p=>p.cat==='grande');
   const minis   = ctx.sabores.filter(p=>p.cat==='mini');
   const doces   = ctx.sabores.filter(p=>p.cat==='doce');
@@ -3595,7 +3621,7 @@ function Estoque({ ctx }) {
     <div>
       {/* Sub-tabs */}
       <div style={{display:'flex',gap:6,marginBottom:16}}>
-        {[['estoque','📦 Estoque'],['mp','🥬 Mat. Prima'],['fornecedores','🚛 Fornecedores'],['historico','📋 Histórico']].map(([k,l])=>(
+        {[['estoque','📦 Estoque'],['mp','🥬 Mat. Prima'],['fornecedores','🚛 Fornecedores'],['clientes','👤 Clientes'],['historico','📋 Histórico']].map(([k,l])=>(
           <button key={k} className="chip" onClick={()=>setSubTab(k)}
             style={{flex:1,justifyContent:'center',fontSize:12,fontWeight:700,
               background:subTab===k?C.red:'white',color:subTab===k?'white':C.text2,
@@ -3699,6 +3725,68 @@ function Estoque({ ctx }) {
                   <button onClick={()=>{setFEdit(f);setFNome(f.nome);setFContato(f.contato||'');setFTipo(f.tipo||'fornecedor');}}
                     style={{background:'#f0ebe4',border:'none',borderRadius:10,padding:'6px 12px',cursor:'pointer',fontSize:12,fontFamily:'inherit'}}>Editar</button>
                   <button onClick={()=>ctx.delFornecedor(f.id)}
+                    style={{background:'transparent',border:'none',cursor:'pointer',padding:6}}>{I.trash('#ccc',13)}</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {subTab==='clientes'&&(
+        <div>
+          <div className="card" style={{marginBottom:14}}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:12}}>{cEdit?'Editar Cliente':'Novo Cliente'}</div>
+            <label className="label">Nome *</label>
+            <input className="input" placeholder="Nome do cliente" value={cNome} onChange={e=>setCNome(e.target.value)} style={{marginBottom:10}}/>
+            <label className="label">WhatsApp</label>
+            <input className="input" placeholder="(48) 99999-9999" value={cWhats} onChange={e=>setCWhats(e.target.value)} style={{marginBottom:10}}/>
+            <label className="label">Endereço</label>
+            <input className="input" placeholder="Rua, número, bairro" value={cEndereco} onChange={e=>setCEndereco(e.target.value)} style={{marginBottom:10}}/>
+            <label className="label">Observações</label>
+            <input className="input" placeholder="Preferências, alergias, etc." value={cObs} onChange={e=>setCObs(e.target.value)} style={{marginBottom:12}}/>
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={salvarCliente} disabled={!cNome.trim()}
+                style={{flex:1,background:cNome.trim()?C.red:'#e5e7eb',border:'none',borderRadius:12,padding:12,color:cNome.trim()?'white':'#9ca3af',fontWeight:700,cursor:cNome.trim()?'pointer':'default',fontFamily:'inherit'}}>
+                {cEdit?'Salvar':'Cadastrar'}
+              </button>
+              {cEdit&&<button onClick={()=>{setCEdit(null);setCNome('');setCWhats('');setCEndereco('');setCObs('');}}
+                style={{background:'#f0ebe4',border:'none',borderRadius:12,padding:'12px 16px',cursor:'pointer',fontFamily:'inherit'}}>
+                Cancelar
+              </button>}
+            </div>
+          </div>
+
+          {ctx.clientes.length===0&&(
+            <div style={{textAlign:'center',padding:'24px 0',color:C.text2,fontSize:13}}>Nenhum cliente cadastrado.</div>
+          )}
+          {ctx.clientes.map(c=>{
+            const tel = (c.whatsapp||'').replace(/\D/g,'');
+            const waLink = tel.length>=10 ? 'https://wa.me/55'+tel : null;
+            return (
+              <div key={c.id} className="card" style={{marginBottom:8,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:700,fontSize:14}}>{c.nome}</div>
+                  {c.whatsapp&&(
+                    <div style={{fontSize:12,color:C.text2,marginTop:2,display:'flex',alignItems:'center',gap:6}}>
+                      {c.whatsapp}
+                      {waLink&&(
+                        <a href={waLink} target="_blank" rel="noopener noreferrer"
+                          style={{display:'inline-flex',alignItems:'center',gap:3,background:'#25D366',color:'white',
+                            borderRadius:8,padding:'2px 8px',fontSize:11,fontWeight:700,textDecoration:'none',whiteSpace:'nowrap'}}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                          WhatsApp
+                        </a>
+                      )}
+                    </div>
+                  )}
+                  {c.endereco&&<div style={{fontSize:12,color:C.text2,marginTop:2}}>{c.endereco}</div>}
+                  {c.obs&&<div style={{fontSize:11,color:C.text2,marginTop:2,fontStyle:'italic'}}>{c.obs}</div>}
+                </div>
+                <div style={{display:'flex',gap:6,marginLeft:8}}>
+                  <button onClick={()=>{setCEdit(c);setCNome(c.nome);setCWhats(c.whatsapp||'');setCEndereco(c.endereco||'');setCObs(c.obs||'');}}
+                    style={{background:'#f0ebe4',border:'none',borderRadius:10,padding:'6px 12px',cursor:'pointer',fontSize:12,fontFamily:'inherit'}}>Editar</button>
+                  <button onClick={()=>ctx.delCliente(c.id)}
                     style={{background:'transparent',border:'none',cursor:'pointer',padding:6}}>{I.trash('#ccc',13)}</button>
                 </div>
               </div>
