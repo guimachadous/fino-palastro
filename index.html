@@ -475,7 +475,9 @@ function App({ currentUserEmail, onLogout }) {
       itens.forEach(item => {
         const nome = item.productName||item.nome||'';
         if (next[nome] !== undefined && next[nome] !== null) {
-          next[nome] = Math.max(0, next[nome] - (item.qty||1));
+          // Mesmo sem saldo suficiente, o pedido é contabilizado: o estoque
+          // pode ficar negativo, indicando o quanto falta repor para este cliente.
+          next[nome] = next[nome] - (item.qty||1);
         }
       });
       try { window.__fsdb.collection('fp_data').doc('fp_estoque_cardapio').set({data:next,ts:Date.now()}).catch(()=>{}); } catch(e){}
@@ -3795,26 +3797,29 @@ function Estoque({ ctx }) {
 
   const StockRow = ({p}) => {
     const qtd = ctx.estoqueData[p.nome];
-    const zerado = qtd !== undefined && qtd !== null && qtd === 0;
     const semControle = qtd === undefined || qtd === null;
+    const negativo = !semControle && qtd < 0;
+    const zerado = !semControle && qtd === 0;
+    const alerta = zerado || negativo;
     const cmv = cmvSabor(ctx.contas, ctx.materiasPrimas, p);
     const temReceita = Array.isArray(p.receita) && p.receita.length>0;
     return (
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',
-          padding:'12px 14px',background:zerado?'#fef2f2':'white',borderRadius:12,
-          marginBottom:6,border:`1px solid ${zerado?'#fecaca':C.border}`}}>
+          padding:'12px 14px',background:alerta?'#fef2f2':'white',borderRadius:12,
+          marginBottom:6,border:`1px solid ${alerta?'#fecaca':C.border}`}}>
         <div onClick={()=>{setAjuste(p);setAjQtd('');setAjMotivo('');setAjTipo('entrada');}} style={{flex:1,cursor:'pointer'}}>
-          <div style={{fontWeight:600,fontSize:14,color:zerado?C.red:C.text}}>{p.nome}</div>
+          <div style={{fontWeight:600,fontSize:14,color:alerta?C.red:C.text}}>{p.nome}</div>
           <div style={{display:'flex',gap:6,alignItems:'center',marginTop:2,flexWrap:'wrap'}}>
             <span style={{fontSize:11,color:C.text2}}>{fmtBRL(p.preco||0)}</span>
             {temReceita&&<span className="badge" style={{background:'#fff7ed',color:'#b45309',fontSize:10,fontWeight:700}}>CMV {fmtBRL(cmv)} ({p.preco?Math.round(cmv/p.preco*100):0}%)</span>}
           </div>
           {zerado&&<div style={{fontSize:11,color:C.red,marginTop:2}}>⚠️ Sem estoque — bloqueado no cardápio</div>}
+          {negativo&&<div style={{fontSize:11,color:C.red,marginTop:2}}>⚠️ Estoque negativo — faltam {Math.abs(qtd)} un. para repor</div>}
           {semControle&&<div style={{fontSize:11,color:C.text2,marginTop:2}}>Sem controle definido</div>}
         </div>
         <div style={{display:'flex',alignItems:'center',gap:10}}>
           <div onClick={()=>{setAjuste(p);setAjQtd('');setAjMotivo('');setAjTipo('entrada');}} style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}>
-            <div style={{fontWeight:900,fontSize:18,color:zerado?C.red:semControle?C.text2:C.green,minWidth:36,textAlign:'right'}}>
+            <div style={{fontWeight:900,fontSize:18,color:alerta?C.red:semControle?C.text2:C.green,minWidth:36,textAlign:'right'}}>
               {semControle?'—':qtd}
             </div>
             <div style={{fontSize:11,color:C.text2}}>un</div>
