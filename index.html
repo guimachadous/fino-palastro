@@ -356,11 +356,30 @@ function App({ currentUserEmail, onLogout }) {
   const initDone = React.useRef(false);
   const importedCardapioIds = React.useRef(new Set());
 
-  // Solicita permissão de notificação ao montar (após login)
+  // Solicita permissão de notificação ao montar (após login).
+  // Importante: pedir só a permissão do navegador (Notification.requestPermission)
+  // NÃO é suficiente para receber push de verdade com o app fechado/celular
+  // bloqueado — é preciso também inscrever o dispositivo no OneSignal
+  // (PushSubscription.optIn), que é quem entrega a notificação via service
+  // worker mesmo sem o app aberto.
+  const ativarPushOneSignal = () => {
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    window.OneSignalDeferred.push(async function(OneSignal) {
+      try {
+        await OneSignal.Notifications.requestPermission();
+        await OneSignal.User.PushSubscription.optIn();
+      } catch(e) {}
+      setNotifPerm('Notification' in window ? Notification.permission : 'unsupported');
+    });
+  };
   useEffect(() => {
     if (!('Notification' in window)) return;
-    if (Notification.permission === 'default') {
-      Notification.requestPermission().then(p => setNotifPerm(p));
+    if (Notification.permission === 'default' || Notification.permission === 'granted') {
+      // 'default' → pede permissão; 'granted' → garante que o OneSignal
+      // também registrou a inscrição (pode já estar ok, mas optIn() é seguro
+      // de chamar de novo — evita o caso de permissão concedida no navegador
+      // sem o dispositivo nunca ter sido inscrito no OneSignal).
+      ativarPushOneSignal();
     }
   }, []);
 
@@ -806,7 +825,7 @@ function App({ currentUserEmail, onLogout }) {
             )}
             {notifPerm === 'default' && (
               <button title="Ativar notificações de pedidos"
-                onClick={()=> Notification.requestPermission().then(p=>setNotifPerm(p))}
+                onClick={ativarPushOneSignal}
                 style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 10px',cursor:'pointer',fontFamily:'inherit',fontSize:15}}>
                 🔔
               </button>
