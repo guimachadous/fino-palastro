@@ -2619,6 +2619,37 @@ function SettingsModal({ ctx }) {
     if(id) ctx.syncFromSheets(id);
   };
 
+  // ── Diagnóstico de push (OneSignal) — mostra se este aparelho está de fato
+  // inscrito para receber notificação mesmo com o app fechado/celular
+  // bloqueado, sem precisar abrir o console do navegador.
+  const [pushStatus, setPushStatus] = React.useState({ checking: true });
+  const lerStatusPush = (cb) => {
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    window.OneSignalDeferred.push(function(OneSignal) {
+      try {
+        const sub = OneSignal.User.PushSubscription;
+        cb({
+          checking: false,
+          permission: 'Notification' in window ? Notification.permission : 'unsupported',
+          optedIn: !!sub.optedIn,
+          id: sub.id || null,
+        });
+      } catch(e) { cb({ checking:false, error:true }); }
+    });
+  };
+  React.useEffect(() => { lerStatusPush(setPushStatus); }, []);
+  const reativarPush = () => {
+    setPushStatus(p=>({...p, checking:true}));
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    window.OneSignalDeferred.push(async function(OneSignal) {
+      try {
+        await OneSignal.Notifications.requestPermission();
+        await OneSignal.User.PushSubscription.optIn();
+      } catch(e) {}
+      lerStatusPush(setPushStatus);
+    });
+  };
+
   return (
     <div className="overlay" onClick={close}>
       <div className="sheet" onClick={e=>e.stopPropagation()}>
@@ -2626,6 +2657,24 @@ function SettingsModal({ ctx }) {
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
           <div style={{fontSize:19,fontWeight:800}}>Configuracoes</div>
           <button onClick={close} style={{background:'none',border:'none',cursor:'pointer',fontSize:22,color:'#bbb'}}>x</button>
+        </div>
+
+        <div style={{background:pushStatus.optedIn?'#f0fdf4':'#fff5f5',borderRadius:16,padding:14,marginBottom:18,border:`1px solid ${pushStatus.optedIn?'#bbf7d0':'#fecaca'}`}}>
+          <div style={{fontSize:13,fontWeight:800,color:pushStatus.optedIn?C.green:C.red,marginBottom:4}}>
+            🔔 Notificação de novo pedido (push)
+          </div>
+          <div style={{fontSize:12,color:C.text2,lineHeight:1.6,marginBottom:8}}>
+            {pushStatus.checking ? 'Verificando...' :
+             pushStatus.error ? 'Não foi possível verificar o status do push neste aparelho.' :
+             pushStatus.permission !== 'granted' ? 'Permissão de notificação não concedida no navegador/app.' :
+             pushStatus.optedIn ? 'Inscrito! Deve receber notificação mesmo com o app fechado ou o celular bloqueado.' :
+             'Permissão concedida, mas este aparelho ainda não está inscrito para push em segundo plano.'}
+          </div>
+          {!pushStatus.checking && (pushStatus.permission!=='granted' || !pushStatus.optedIn || pushStatus.error) && (
+            <button onClick={reativarPush} className="btn-primary" style={{padding:'10px 16px',background:C.red,fontSize:13}}>
+              Tentar ativar novamente
+            </button>
+          )}
         </div>
 
         <div style={{background:'#eff6ff',borderRadius:16,padding:14,marginBottom:18,border:'1px solid #bfdbfe'}}>
