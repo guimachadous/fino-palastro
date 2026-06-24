@@ -489,22 +489,51 @@ function App({ currentUserEmail, onLogout }) {
   const updSabor = (id,d) => setSabores(p=>p.map(s=>s.id===id?{...s,...d}:s));
   const delSabor = id => setSabores(p=>p.filter(s=>s.id!==id));
 
+  // ── Estoque: escrita sempre baseada na versão mais recente da nuvem ────────
+  // Bug anterior: cada função abaixo partia do `estoqueData` que já estava em
+  // memória neste aparelho/aba (via setEstoqueData(prev=>...)). Se este app
+  // ficasse aberto por dias sem recarregar (comum num celular/PWA em segundo
+  // plano) e ALGUÉM atualizasse o estoque por outro aparelho, este aparelho
+  // continuava com uma cópia antiga em memória. No primeiro pedido que
+  // chegasse e fosse debitado por aqui, ele recalculava a partir dessa cópia
+  // antiga e sobrescrevia a nuvem — apagando a atualização manual feita em
+  // outro lugar. Agora toda mudança lê o valor atual direto do Firestore
+  // (numa transação, à prova de duas escritas simultâneas) e só então aplica
+  // o ajuste, eliminando esse "voltar para uma base antiga".
+  const aplicarMudancaEstoque = (mutate) => {
+    const ref = window.__fsdb.collection('fp_data').doc('fp_estoque');
+    return window.__fsdb.runTransaction(tx => tx.get(ref).then(snap => {
+      const d = snap.exists ? snap.data() : null;
+      const atual = (d && d.data && typeof d.data==='object' && !Array.isArray(d.data)) ? d.data : {};
+      const novo = mutate(atual);
+      tx.set(ref, {data:novo, ts:Date.now()});
+      return novo;
+    })).then(novo => {
+      setEstoqueData(novo);
+      try { localStorage.setItem('fp_estoque', JSON.stringify(novo)); } catch(e){}
+      // Cópia para o cardápio ler (chave separada, lida pelo site público)
+      try { window.__fsdb.collection('fp_data').doc('fp_estoque_cardapio').set({data:novo,ts:Date.now()}).catch(()=>{}); } catch(e){}
+      return novo;
+    }).catch(() => {
+      // Sem internet/Firestore indisponível: aplica localmente mesmo assim,
+      // para não bloquear o uso — vai sincronizar quando voltar a conexão.
+      setEstoqueData(prev => mutate(prev));
+    });
+  };
+
   // Estoque — ajuste manual ou automático
   const ajustarEstoque = (nome, delta, motivo, tipo) => {
-    setEstoqueData(prev => {
-      const atual = prev[nome] !== undefined ? prev[nome] : null;
-      const novoVal = atual === null ? Math.max(0, delta) : Math.max(0, atual + delta);
-      const next = {...prev, [nome]: novoVal};
-      // Sincronizar com Firestore para o cardápio ler
-      try { window.__fsdb.collection('fp_data').doc('fp_estoque_cardapio').set({data:next,ts:Date.now()}).catch(()=>{}); } catch(e){}
-      return next;
+    aplicarMudancaEstoque(atual => {
+      const val = atual[nome] !== undefined ? atual[nome] : null;
+      const novoVal = val === null ? Math.max(0, delta) : Math.max(0, val + delta);
+      return {...atual, [nome]: novoVal};
     });
     setEstoqueHist(p=>[{id:genId(),nome,tipo,quantidade:Math.abs(delta),motivo,data:today()},...p].slice(0,500));
   };
 
   const debitarEstoquePedido = (itens) => {
-    setEstoqueData(prev => {
-      const next = {...prev};
+    aplicarMudancaEstoque(atual => {
+      const next = {...atual};
       itens.forEach(item => {
         const nome = item.productName||item.nome||'';
         if (next[nome] !== undefined && next[nome] !== null) {
@@ -513,7 +542,6 @@ function App({ currentUserEmail, onLogout }) {
           next[nome] = next[nome] - (item.qty||1);
         }
       });
-      try { window.__fsdb.collection('fp_data').doc('fp_estoque_cardapio').set({data:next,ts:Date.now()}).catch(()=>{}); } catch(e){}
       return next;
     });
   };
@@ -521,15 +549,14 @@ function App({ currentUserEmail, onLogout }) {
   // Repõe ao estoque os itens de um pedido que deixou de estar confirmado
   // (voltou pra pendente ou foi cancelado) antes de ser entregue.
   const reporEstoquePedido = (itens) => {
-    setEstoqueData(prev => {
-      const next = {...prev};
+    aplicarMudancaEstoque(atual => {
+      const next = {...atual};
       itens.forEach(item => {
         const nome = item.productName||item.nome||'';
         if (next[nome] !== undefined && next[nome] !== null) {
           next[nome] = next[nome] + (item.qty||1);
         }
       });
-      try { window.__fsdb.collection('fp_data').doc('fp_estoque_cardapio').set({data:next,ts:Date.now()}).catch(()=>{}); } catch(e){}
       return next;
     });
   };
