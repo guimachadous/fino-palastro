@@ -452,10 +452,14 @@ function App({ currentUserEmail, onLogout }) {
   const delTrans  = id => setTrans(p => p.filter(t => t.id!==id));
   const addConta   = c => setContas(p => [{...c, id:genId(), criadoEm:today()}, ...p]);
   const updConta   = (id,d) => setContas(p => p.map(c => c.id===id?{...c,...d}:c));
-  const pagarConta = (id,desconto=0) => {
+  // `juros` é somado só no valor efetivamente pago/recebido (valorRecebido) e na
+  // transação financeira — NUNCA no campo `valor` da conta. O `valor`/`itens[].valor`
+  // é o que comprasDeMP/ultimoPrecoMP usam para calcular o custo da matéria-prima
+  // (CMV), então juros por atraso de pagamento não pode inflar esse custo.
+  const pagarConta = (id,desconto=0,juros=0) => {
     const conta = contas.find(c => c.id===id);
     if (conta) {
-      const valorFinal = Math.max(0,(conta.valor||0)-(desconto||0));
+      const valorFinal = Math.max(0,(conta.valor||0)-(desconto||0)+(juros||0));
       addTrans({
         date: today(),
         type: conta.tipo==='receber' ? 'entrada' : 'saida',
@@ -466,7 +470,8 @@ function App({ currentUserEmail, onLogout }) {
         ref: conta.id
       });
     }
-    setContas(p => p.map(c => c.id===id?{...c,pago:true,pagoEm:today(),desconto:desconto||0,valorRecebido:Math.max(0,(c.valor||0)-(desconto||0))}:c));
+    setContas(p => p.map(c => c.id===id?{...c,pago:true,pagoEm:today(),desconto:desconto||0,juros:juros||0,
+      valorRecebido:Math.max(0,(c.valor||0)-(desconto||0)+(juros||0))}:c));
   };
   const delConta   = id => setContas(p => p.filter(c => c.id!==id));
 
@@ -3234,12 +3239,13 @@ function Contas({ ctx }) {
                 {c.pagoEm && <span style={{fontSize:11,color:'#aaa'}}>{tipo==='receber'?'Recebido':'Pago'} em {fmtDate(c.pagoEm)}</span>}
                 {c.notaFiscal && <span className="badge" style={{background:'#f0fdf4',color:'#666',fontSize:10}}>NF: {c.notaFiscal}</span>}
                 {!!c.desconto && <span className="badge" style={{background:'#fff7ed',color:'#b45309',fontSize:10}}>Desconto: {fmtBRL(c.desconto)}</span>}
+                {!!c.juros && <span className="badge" style={{background:'#fef2f2',color:'#b91c1c',fontSize:10}}>Juros: +{fmtBRL(c.juros)}</span>}
               </div>
             </div>
             <div style={{display:'flex',alignItems:'center',gap:8}}>
               <div style={{textAlign:'right'}}>
-                {!!c.desconto && <div style={{fontSize:11,color:'#ccc',textDecoration:'line-through'}}>{fmtBRL(c.valor)}</div>}
-                <div style={{fontWeight:700,color:'#aaa',fontSize:14}}>{fmtBRL(c.desconto?c.valorRecebido:c.valor)}</div>
+                {(!!c.desconto || !!c.juros) && <div style={{fontSize:11,color:'#ccc',textDecoration:'line-through'}}>{fmtBRL(c.valor)}</div>}
+                <div style={{fontWeight:700,color:'#aaa',fontSize:14}}>{fmtBRL((c.desconto||c.juros)?c.valorRecebido:c.valor)}</div>
               </div>
               <button onClick={()=>ctx.delConta(c.id)} style={{background:'transparent',border:'none',cursor:'pointer',padding:4}}>{I.trash('#ccc',13)}</button>
             </div>
@@ -3609,16 +3615,21 @@ function ContaModal({ ctx, initTipo, conta }) {
 function PagamentoModal({ ctx, conta }) {
   const { close } = ctx;
   const [desconto, setDesconto] = useState('');
+  const [jurosStr, setJurosStr] = useState('');
   if (!conta) return null;
 
   const tipo = conta.tipo;
   const accent = tipo==='receber' ? C.green : C.red;
   const valorOriginal = conta.valor || 0;
-  const descNum = Math.min(parseFloat((desconto||'0').replace(',','.'))||0, valorOriginal);
-  const valorFinal = Math.max(0, valorOriginal - descNum);
+  const descNum  = Math.min(parseFloat((desconto||'0').replace(',','.'))||0, valorOriginal);
+  // Juros/multa por atraso — só faz sentido em contas a pagar (boleto pago depois
+  // do vencimento). É somado por fora do valor original, nunca alterando-o: o
+  // `valor` da conta continua intacto para não distorcer o custo da matéria-prima.
+  const jurosNum = tipo==='pagar' ? (parseFloat((jurosStr||'0').replace(',','.'))||0) : 0;
+  const valorFinal = Math.max(0, valorOriginal - descNum + jurosNum);
 
   const confirmar = () => {
-    ctx.pagarConta(conta.id, descNum);
+    ctx.pagarConta(conta.id, descNum, jurosNum);
     close();
   };
 
@@ -3639,6 +3650,15 @@ function PagamentoModal({ ctx, conta }) {
         <label className="label">Desconto concedido (opcional)</label>
         <input className="input" type="number" inputMode="decimal" placeholder="Ex: 10,00"
           value={desconto} onChange={e=>setDesconto(e.target.value)} style={{marginBottom:16}}/>
+
+        {tipo==='pagar' && <>
+          <label className="label">Juros / multa por atraso (opcional)</label>
+          <input className="input" type="number" inputMode="decimal" placeholder="Ex: 15,00"
+            value={jurosStr} onChange={e=>setJurosStr(e.target.value)} style={{marginBottom:4}}/>
+          <div style={{fontSize:11,color:C.text2,marginBottom:16}}>
+            Some ao valor pago, sem alterar o valor original da conta — não entra no cálculo de custo da matéria-prima.
+          </div>
+        </>}
 
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',background:'#fafaf8',border:`1px solid ${C.border}`,borderRadius:12,padding:'12px 14px',marginBottom:20}}>
           <span style={{fontSize:13,fontWeight:700}}>{tipo==='receber'?'Valor recebido':'Valor pago'}</span>
