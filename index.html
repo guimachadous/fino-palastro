@@ -449,14 +449,19 @@ function App({ currentUserEmail, onLogout }) {
     if (d.status==='delivered' && !d.paid) {
       setContas(p => p.map(c => c.origemId===id&&c.tipo==='receber'&&!c.pago ? {...c,vencimento:today()} : c));
     }
-    // Ao confirmar o pedido, debita o estoque automaticamente — separa os
-    // itens deste cliente. Se o pedido deixar de estar confirmado (volta pra
-    // pendente ou é cancelado) sem ter sido entregue, repõe o estoque.
+    // Debita o estoque assim que o pedido entra em "Confirmado" OU "Entregue"
+    // (o que vier primeiro — o botão "Pago" pula direto de Pendente pra
+    // Entregue sem passar por Confirmado, então não dá pra checar só um dos
+    // dois). Se sair desses dois status sem ter virado venda (volta pra
+    // pendente ou é cancelado), repõe o estoque.
     if (old && d.status && d.status!==old.status) {
-      if (d.status==='confirmed' && !old.estoqueDebitado) {
+      const DEBITA = ['confirmed','delivered'];
+      const entrouEmDebito = DEBITA.includes(d.status) && !DEBITA.includes(old.status);
+      const saiuDoDebito   = !DEBITA.includes(d.status) && DEBITA.includes(old.status);
+      if (entrouEmDebito && !old.estoqueDebitado) {
         debitarEstoquePedido(old.items||[]);
         setOrders(p => p.map(o => o.id===id?{...o,estoqueDebitado:true}:o));
-      } else if (old.status==='confirmed' && (d.status==='pending'||d.status==='cancelled') && old.estoqueDebitado) {
+      } else if (saiuDoDebito && old.estoqueDebitado) {
         reporEstoquePedido(old.items||[]);
         setOrders(p => p.map(o => o.id===id?{...o,estoqueDebitado:false}:o));
       }
@@ -1895,11 +1900,12 @@ function OrderDetail({ ctx, order }) {
   if(!order)return null;
   const setStatus=s=>{
     ctx.updOrder(order.id,{status:s});
-    // Espelha localmente o efeito no estoque (debita ao confirmar, repõe se
-    // voltar pra pendente/cancelado antes de ser entregue) pra refletir na UI.
+    // Espelha localmente o efeito no estoque (debita ao confirmar OU entregar,
+    // repõe se voltar pra pendente/cancelado) pra refletir na UI.
+    const DEBITA = ['confirmed','delivered'];
     let estoqueDebitado = cur.estoqueDebitado;
-    if (s==='confirmed' && !estoqueDebitado) estoqueDebitado = true;
-    else if (cur.status==='confirmed' && (s==='pending'||s==='cancelled') && estoqueDebitado) estoqueDebitado = false;
+    if (DEBITA.includes(s) && !DEBITA.includes(cur.status) && !estoqueDebitado) estoqueDebitado = true;
+    else if (!DEBITA.includes(s) && DEBITA.includes(cur.status) && estoqueDebitado) estoqueDebitado = false;
     setCur({...cur,status:s,estoqueDebitado});
   };
   const handlePaid=()=>{ ctx.paidOrder(order); ctx.close(); };
