@@ -3805,6 +3805,38 @@ function MateriaPrimaTab({ ctx }) {
           value={busca} onChange={e=>setBusca(e.target.value)} style={{marginBottom:14}}/>
       )}
 
+      {/* Consulta rápida: último valor pago + último fornecedor, lado a lado,
+          sem precisar abrir cada matéria-prima — pra checar rapidinho onde e
+          por quanto foi a última compra de cada item. */}
+      {lista.length > 0 && (
+        <div className="card" style={{marginBottom:14,padding:'14px 14px 4px'}}>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:8}}>📋 Última compra por matéria-prima</div>
+          {lista.slice().sort((a,b)=>a.nome.localeCompare(b.nome)).map(m=>{
+            const ultimo = ultimoPrecoMP(ctx.contas, m);
+            return (
+              <div key={m.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,
+                padding:'9px 0',borderBottom:`1px solid ${C.border}`}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:700,fontSize:13,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{m.nome}</div>
+                  {ultimo && !ultimo.manual && <div style={{fontSize:10.5,color:C.text2,marginTop:1}}>{fmtDate(ultimo.data)}</div>}
+                </div>
+                <div style={{textAlign:'right',minWidth:78,flexShrink:0}}>
+                  <div style={{fontWeight:800,fontSize:13,color:'#b45309'}}>
+                    {ultimo ? `${fmtBRL(ultimo.custoExibicao)}/${ultimo.unidadeBase}` : '—'}
+                  </div>
+                </div>
+                <div style={{textAlign:'right',minWidth:110,maxWidth:130,flexShrink:0}}>
+                  <div style={{fontWeight:700,fontSize:12,color:ultimo&&!ultimo.manual?C.text:C.text2,
+                    whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                    {ultimo ? (ultimo.manual ? 'Preço manual' : (ultimo.fornecedor||'—')) : '—'}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Lista por categoria */}
       {ctx.materiasPrimas.length===0 && (
         <div style={{textAlign:'center',padding:'32px 0',color:C.text2,fontSize:13}}>Nenhuma matéria prima cadastrada ainda.</div>
