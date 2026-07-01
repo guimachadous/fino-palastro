@@ -3414,12 +3414,16 @@ function ContaModal({ ctx, initTipo, conta }) {
   };
 
   const accent = tipo==='receber' ? C.green : C.red;
-  const fornNomes = (ctx.fornecedores||[]).map(f=>f.nome);
   const mpNomes   = (ctx.materiasPrimas||[]).map(m=>m.nome);
   const [showMpSugg, setShowMpSugg] = useState(false);
   const [showFornSugg, setShowFornSugg] = useState(false);
   const mpFiltradas   = mpNomes.filter(n=>n.toLowerCase().includes(descricao.toLowerCase())).slice(0,8);
-  const fornFiltrados = fornNomes.filter(n=>n.toLowerCase().includes(cliente.toLowerCase())).slice(0,8);
+  // Autocomplete de fornecedor: busca por nome fantasia OU razão social
+  const fornFiltrados = (ctx.fornecedores||[]).filter(f=>{
+    const q = cliente.toLowerCase();
+    if (!q) return true;
+    return (f.nome||'').toLowerCase().includes(q)||(f.razaoSocial||'').toLowerCase().includes(q);
+  }).slice(0,8);
 
   const onDescricaoChange = (val) => {
     setDescricao(val);
@@ -3606,10 +3610,11 @@ function ContaModal({ ctx, initTipo, conta }) {
             style={{marginBottom:0}}/>
           {showFornSugg && fornFiltrados.length>0 && (
             <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'white',border:`1px solid ${C.border}`,borderRadius:12,boxShadow:'0 8px 20px rgba(0,0,0,0.12)',zIndex:20,maxHeight:180,overflowY:'auto'}}>
-              {fornFiltrados.map((n,i)=>(
-                <div key={n} onClick={()=>{setCliente(n);setShowFornSugg(false);}}
-                  style={{padding:'10px 14px',fontSize:14,cursor:'pointer',borderBottom:i<fornFiltrados.length-1?`1px solid ${C.border}`:'none'}}>
-                  {n}
+              {fornFiltrados.map((f,i)=>(
+                <div key={f.id||f.nome} onClick={()=>{setCliente(f.nome);setShowFornSugg(false);}}
+                  style={{padding:'10px 14px',cursor:'pointer',borderBottom:i<fornFiltrados.length-1?`1px solid ${C.border}`:'none'}}>
+                  <div style={{fontSize:14,fontWeight:600}}>{f.nome}</div>
+                  {f.razaoSocial&&<div style={{fontSize:11,color:'#9ca3af',marginTop:1}}>{f.razaoSocial}</div>}
                 </div>
               ))}
             </div>
@@ -3929,10 +3934,12 @@ function Estoque({ ctx }) {
   const [ajTipo, setAjTipo] = useState('entrada');
   const [ajMotivo, setAjMotivo] = useState('');
   // fornecedor form
-  const [fNome,   setFNome]   = useState('');
-  const [fContato,setFContato]= useState('');
-  const [fTipo,   setFTipo]   = useState('fornecedor');
-  const [fEdit,   setFEdit]   = useState(null);
+  const [fNome,       setFNome]       = useState(''); // Nome Fantasia
+  const [fRazaoSocial,setFRazaoSocial]= useState('');
+  const [fContato,    setFContato]    = useState('');
+  const [fTipo,       setFTipo]       = useState('fornecedor');
+  const [fEdit,       setFEdit]       = useState(null);
+  const [fBusca,      setFBusca]      = useState('');
   // form de cliente (criar/editar)
   const [cNome,    setCNome]    = useState('');
   const [cWhats,   setCWhats]   = useState('');
@@ -3985,15 +3992,16 @@ function Estoque({ ctx }) {
   };
 
   const salvarForn = () => {
-    const nome = fNome.trim();
+    const nome = fNome.trim(); // nome = Nome Fantasia (campo principal)
     if (!nome) return;
+    const dados = {nome, razaoSocial:fRazaoSocial.trim(), contato:fContato.trim(), tipo:fTipo};
     if (fEdit) {
-      ctx.updFornecedor(fEdit.id, {nome, contato:fContato.trim(), tipo:fTipo});
+      ctx.updFornecedor(fEdit.id, dados);
       setFEdit(null);
     } else {
-      ctx.addFornecedor({nome, contato:fContato.trim(), tipo:fTipo});
+      ctx.addFornecedor(dados);
     }
-    setFNome(''); setFContato(''); setFTipo('fornecedor');
+    setFNome(''); setFRazaoSocial(''); setFContato(''); setFTipo('fornecedor');
   };
 
   const salvarCliente = () => {
@@ -4101,8 +4109,10 @@ function Estoque({ ctx }) {
         <div>
           <div className="card" style={{marginBottom:14}}>
             <div style={{fontWeight:700,fontSize:15,marginBottom:12}}>{fEdit?'Editar Fornecedor':'Novo Fornecedor'}</div>
-            <label className="label">Nome *</label>
-            <input className="input" placeholder="Nome do fornecedor" value={fNome} onChange={e=>setFNome(e.target.value)} style={{marginBottom:10}}/>
+            <label className="label">Nome Fantasia *</label>
+            <input className="input" placeholder="Ex: Distribuidora Sul" value={fNome} onChange={e=>setFNome(e.target.value)} style={{marginBottom:10}}/>
+            <label className="label">Razão Social</label>
+            <input className="input" placeholder="Ex: Sul Distribuidora LTDA" value={fRazaoSocial} onChange={e=>setFRazaoSocial(e.target.value)} style={{marginBottom:10}}/>
             <label className="label">Contato (tel / e-mail)</label>
             <input className="input" placeholder="(48) 99999-9999" value={fContato} onChange={e=>setFContato(e.target.value)} style={{marginBottom:10}}/>
             <label className="label">Tipo</label>
@@ -4120,7 +4130,7 @@ function Estoque({ ctx }) {
                 style={{flex:1,background:fNome.trim()?C.red:'#e5e7eb',border:'none',borderRadius:12,padding:12,color:fNome.trim()?'white':'#9ca3af',fontWeight:700,cursor:fNome.trim()?'pointer':'default',fontFamily:'inherit'}}>
                 {fEdit?'Salvar':'Cadastrar'}
               </button>
-              {fEdit&&<button onClick={()=>{setFEdit(null);setFNome('');setFContato('');setFTipo('fornecedor');}}
+              {fEdit&&<button onClick={()=>{setFEdit(null);setFNome('');setFRazaoSocial('');setFContato('');setFTipo('fornecedor');}}
                 style={{background:'#f0ebe4',border:'none',borderRadius:12,padding:'12px 16px',cursor:'pointer',fontFamily:'inherit'}}>
                 Cancelar
               </button>}
@@ -4130,13 +4140,22 @@ function Estoque({ ctx }) {
           {ctx.fornecedores.length===0&&(
             <div style={{textAlign:'center',padding:'24px 0',color:C.text2,fontSize:13}}>Nenhum fornecedor cadastrado.</div>
           )}
-          {ctx.fornecedores.map(f=>{
+          {ctx.fornecedores.length>0&&(
+            <input className="input" placeholder="🔍 Pesquisar por nome fantasia ou razão social..."
+              value={fBusca} onChange={e=>setFBusca(e.target.value)} style={{marginBottom:14}}/>
+          )}
+          {ctx.fornecedores.filter(f=>{
+            if(!fBusca) return true;
+            const q=fBusca.toLowerCase();
+            return (f.nome||'').toLowerCase().includes(q)||(f.razaoSocial||'').toLowerCase().includes(q);
+          }).map(f=>{
             const tel = (f.contato||'').replace(/\D/g,'');
             const waLink = tel.length>=10 ? 'https://wa.me/55'+tel : null;
             return (
               <div key={f.id} className="card" style={{marginBottom:8,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:700,fontSize:14}}>{f.nome}</div>
+                  {f.razaoSocial&&<div style={{fontSize:11,color:C.text2,marginTop:1}}>{f.razaoSocial}</div>}
                   {f.contato&&(
                     <div style={{fontSize:12,color:C.text2,marginTop:2,display:'flex',alignItems:'center',gap:6}}>
                       {f.contato}
@@ -4153,7 +4172,7 @@ function Estoque({ ctx }) {
                   <span className="badge" style={{marginTop:4,background:'#f0f4ff',color:C.blue,fontSize:10}}>{f.tipo==='mp'?'Matéria Prima':f.tipo==='ambos'?'Forn. + MP':'Fornecedor'}</span>
                 </div>
                 <div style={{display:'flex',gap:6,marginLeft:8}}>
-                  <button onClick={()=>{setFEdit(f);setFNome(f.nome);setFContato(f.contato||'');setFTipo(f.tipo||'fornecedor');}}
+                  <button onClick={()=>{setFEdit(f);setFNome(f.nome);setFRazaoSocial(f.razaoSocial||'');setFContato(f.contato||'');setFTipo(f.tipo||'fornecedor');}}
                     style={{background:'#f0ebe4',border:'none',borderRadius:10,padding:'6px 12px',cursor:'pointer',fontSize:12,fontFamily:'inherit'}}>Editar</button>
                   <button onClick={()=>ctx.delFornecedor(f.id)}
                     style={{background:'transparent',border:'none',cursor:'pointer',padding:6}}>{I.trash('#ccc',13)}</button>
