@@ -2955,6 +2955,7 @@ function Contas({ ctx }) {
   const [tipo, setTipo] = useState('receber');
   const [showPagas, setShowPagas] = useState(false);
   const [view, setView] = useState('lista'); // 'lista' | 'calendario'
+  const [buscaConta, setBuscaConta] = useState('');
 
   const tod = today();
   const isVencido = c => !c.pago && c.vencimento && c.vencimento < tod;
@@ -3004,6 +3005,16 @@ function Contas({ ctx }) {
   const aVencer    = pendentes.filter(c => !isVencido(c));
   const totalPend  = pendentes.reduce((s,c)=>s+c.valor,0);
   const totalVenc  = vencidos.reduce((s,c)=>s+c.valor,0);
+
+  // Versões filtradas pela busca (NF ou fornecedor/cliente) — usadas só na renderização da lista
+  const filtrarConta = c => {
+    if (!buscaConta) return true;
+    const q = buscaConta.toLowerCase();
+    return (c.notaFiscal||'').toLowerCase().includes(q) || (c.cliente||'').toLowerCase().includes(q);
+  };
+  const vencidosExib = vencidos.filter(filtrarConta);
+  const aVencerExib  = aVencer.filter(filtrarConta);
+  const pagasExib    = pagas.filter(filtrarConta);
 
   const accent = tipo==='receber' ? C.green : C.red;
 
@@ -3212,26 +3223,34 @@ function Contas({ ctx }) {
       </>}
 
       {view==='lista' && <>
+      {/* Busca por NF ou fornecedor */}
+      <input className="input" placeholder="🔍 Buscar por nota fiscal ou fornecedor/cliente..."
+        value={buscaConta} onChange={e=>setBuscaConta(e.target.value)} style={{marginBottom:14}}/>
+
       {/* Vencidos section */}
-      {vencidos.length>0 && <>
+      {vencidosExib.length>0 && <>
         <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}>
           <div style={{width:10,height:10,borderRadius:'50%',background:'#b91c1c'}}/>
-          <div className="section-label" style={{marginBottom:0,color:'#b91c1c'}}>Vencidos ({vencidos.length})</div>
+          <div className="section-label" style={{marginBottom:0,color:'#b91c1c'}}>Vencidos ({vencidosExib.length})</div>
         </div>
-        {vencidos.map(c=><ContaCard key={c.id} c={c}/>)}
-        {aVencer.length>0 && <div className="divider" style={{margin:'12px 0'}}/>}
+        {vencidosExib.map(c=><ContaCard key={c.id} c={c}/>)}
+        {aVencerExib.length>0 && <div className="divider" style={{margin:'12px 0'}}/>}
       </>}
 
       {/* Em aberto section */}
-      {aVencer.length>0 && <>
+      {aVencerExib.length>0 && <>
         <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}>
           <div style={{width:10,height:10,borderRadius:'50%',background:accent}}/>
-          <div className="section-label" style={{marginBottom:0}}>Em aberto ({aVencer.length})</div>
+          <div className="section-label" style={{marginBottom:0}}>Em aberto ({aVencerExib.length})</div>
         </div>
-        {aVencer.map(c=><ContaCard key={c.id} c={c}/>)}
+        {aVencerExib.map(c=><ContaCard key={c.id} c={c}/>)}
       </>}
 
-      {pendentes.length===0 && (
+      {buscaConta && vencidosExib.length===0 && aVencerExib.length===0 && pagasExib.length===0 && (
+        <div style={{textAlign:'center',padding:'28px 0',color:C.text2,fontSize:13}}>Nenhuma conta encontrada para "{buscaConta}"</div>
+      )}
+
+      {!buscaConta && pendentes.length===0 && (
         <div style={{textAlign:'center',padding:'40px 20px'}}>
           <div style={{fontSize:40,marginBottom:12}}>{tipo==='receber'?'💚':'💸'}</div>
           <div style={{fontWeight:800,fontSize:16,marginBottom:6}}>
@@ -3244,14 +3263,14 @@ function Contas({ ctx }) {
       )}
 
       {/* Pagas / recebidas */}
-      {pagas.length>0 && <>
+      {pagasExib.length>0 && <>
         <div className="divider" style={{margin:'16px 0 12px'}}/>
         <button onClick={()=>setShowPagas(p=>!p)}
           style={{background:'transparent',border:'none',cursor:'pointer',fontFamily:'inherit',display:'flex',alignItems:'center',gap:6,marginBottom:10,padding:0}}>
-          <div className="section-label" style={{color:'#aaa',marginBottom:0}}>{tipo==='receber'?'Recebidos':'Pagos'} ({pagas.length})</div>
+          <div className="section-label" style={{color:'#aaa',marginBottom:0}}>{tipo==='receber'?'Recebidos':'Pagos'} ({pagasExib.length})</div>
           <span style={{fontSize:12,color:'#aaa'}}>{showPagas?'▲':'▼'}</span>
         </button>
-        {showPagas && pagas.map(c=>(
+        {showPagas && pagasExib.map(c=>(
           <div key={c.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 14px',background:'#fafaf8',borderRadius:12,border:'1px solid #f0eae0',marginBottom:6,opacity:0.65}}>
             <div>
               <div style={{fontWeight:600,fontSize:14,color:C.text2,textDecoration:'line-through'}}>{c.descricao}</div>
