@@ -3975,6 +3975,7 @@ function Estoque({ ctx }) {
 
   const abrirNovoSabor = (cat) => { setSaborForm({}); setSfNome(''); setSfCat(cat); setSfPreco(''); setSfDesc(''); setSfReceita([]); };
   const abrirEditarSabor = (s) => { setSaborForm(s); setSfNome(s.nome); setSfCat(s.cat); setSfPreco(String(s.preco||'')); setSfDesc(s.desc||''); setSfReceita(s.receita||[]); };
+  const abrirCopiarSabor = (s) => { setSaborForm({}); setSfNome(s.nome); setSfCat(s.cat); setSfPreco(String(s.preco||'')); setSfDesc(s.desc||''); setSfReceita((s.receita||[]).map(it=>({...it}))); };
   const addItemReceita = () => setSfReceita(p=>[...p,{materiaPrimaId:'',quantidade:'',unidade:''}]);
   const updItemReceita = (idx,k,v) => setSfReceita(p=>p.map((it,i)=>{
     if (i!==idx) return it;
@@ -4035,9 +4036,19 @@ function Estoque({ ctx }) {
     setCNome(''); setCWhats(''); setCEndereco(''); setCObs('');
   };
 
-  const grandes = ctx.sabores.filter(p=>p.cat==='grande');
-  const minis   = ctx.sabores.filter(p=>p.cat==='mini');
-  const doces   = ctx.sabores.filter(p=>p.cat==='doce');
+  // Ranking de vendas por sabor (todos os pedidos não cancelados)
+  const vendasPorNome = {};
+  ctx.orders.forEach(o => {
+    if (o.status === 'cancelled') return;
+    (o.items||[]).forEach(i => {
+      const nome = i.productName || i.nome || '';
+      if (nome) vendasPorNome[nome] = (vendasPorNome[nome]||0) + (i.qty||1);
+    });
+  });
+  const byVendas = (a, b) => (vendasPorNome[b.nome]||0) - (vendasPorNome[a.nome]||0);
+  const grandes = ctx.sabores.filter(p=>p.cat==='grande').sort(byVendas);
+  const minis   = ctx.sabores.filter(p=>p.cat==='mini').sort(byVendas);
+  const doces   = ctx.sabores.filter(p=>p.cat==='doce').sort(byVendas);
 
   const StockRow = ({p}) => {
     const qtd = ctx.estoqueData[p.nome];
@@ -4055,6 +4066,7 @@ function Estoque({ ctx }) {
           <div style={{fontWeight:600,fontSize:14,color:alerta?C.red:C.text}}>{p.nome}</div>
           <div style={{display:'flex',gap:6,alignItems:'center',marginTop:2,flexWrap:'wrap'}}>
             <span style={{fontSize:11,color:C.text2}}>{fmtBRL(p.preco||0)}</span>
+            {(vendasPorNome[p.nome]||0)>0&&<span style={{fontSize:10,color:'#888',background:'#f5f0e8',padding:'1px 7px',borderRadius:10,fontWeight:600}}>{vendasPorNome[p.nome]===1?'1 venda':`${vendasPorNome[p.nome]} vendas`}</span>}
             {temReceita&&<span className="badge" style={{background:'#fff7ed',color:'#b45309',fontSize:10,fontWeight:700}}>CMV {fmtBRL(cmv)} ({p.preco?Math.round(cmv/p.preco*100):0}%)</span>}
           </div>
           {zerado&&<div style={{fontSize:11,color:C.red,marginTop:2}}>⚠️ Sem estoque — bloqueado no cardápio</div>}
@@ -4068,6 +4080,8 @@ function Estoque({ ctx }) {
             </div>
             <div style={{fontSize:11,color:C.text2}}>un</div>
           </div>
+          <button onClick={()=>abrirCopiarSabor(p)}
+            style={{background:'#eef4ff',border:'none',borderRadius:10,padding:'6px 10px',cursor:'pointer',fontSize:11,fontFamily:'inherit',color:'#3b6fcf',marginRight:4}}>Copiar</button>
           <button onClick={()=>abrirEditarSabor(p)}
             style={{background:'#f0ebe4',border:'none',borderRadius:10,padding:'6px 10px',cursor:'pointer',fontSize:11,fontFamily:'inherit'}}>Editar</button>
         </div>
@@ -4329,7 +4343,7 @@ function Estoque({ ctx }) {
         <div className="overlay" onClick={()=>setSaborForm(null)}>
           <div className="sheet" onClick={e=>e.stopPropagation()}>
             <div className="sheet-handle"/>
-            <div style={{fontWeight:800,fontSize:17,marginBottom:16}}>{saborForm.id?'Editar Sabor':'Novo Sabor'}</div>
+            <div style={{fontWeight:800,fontSize:17,marginBottom:16}}>{saborForm.id?'Editar Sabor':sfNome?'Copiar Sabor':'Novo Sabor'}</div>
 
             <label className="label">Categoria</label>
             <div style={{display:'flex',gap:6,marginBottom:12}}>
