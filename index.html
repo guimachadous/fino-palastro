@@ -2032,6 +2032,48 @@ function EventDetail({ ctx, event }) {
 
         {cur.notes&&<div style={{background:'#fffbeb',borderRadius:12,padding:12,marginBottom:16,fontSize:13}}>💬 {cur.notes}</div>}
 
+        {/* ── Produção necessária (Express não realizado) ── */}
+        {cur.type==='express' && Array.isArray(cur.items) && cur.items.length>0 && !cur.paid && cur.status!=='cancelado' && (()=>{
+          const linhas = cur.items.map(item=>{
+            const est = ctx.estoqueData[item.productName];
+            const semCtrl = est===undefined||est===null;
+            const emEstoque = semCtrl ? 0 : est;
+            const produzir = Math.max(0, (item.qty||1) - Math.max(0, emEstoque));
+            return {...item, emEstoque, semCtrl, produzir};
+          });
+          const totalProduzir = linhas.reduce((s,l)=>s+l.produzir,0);
+          return (
+            <div style={{background:'#fafafa',borderRadius:14,padding:14,marginBottom:16,border:'1.5px solid #e5e7eb'}}>
+              <div style={{fontWeight:800,fontSize:14,marginBottom:2}}>🔧 Produção necessária</div>
+              <div style={{fontSize:11,color:C.text2,marginBottom:10}}>Pedido pelo cliente menos o que há em estoque agora</div>
+              {linhas.map((l,idx)=>(
+                <div key={idx} style={{display:'flex',justifyContent:'space-between',alignItems:'center',
+                    padding:'9px 0',borderBottom:idx<linhas.length-1?`1px solid ${C.border}`:'none'}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:600,fontSize:13,color:C.text}}>{l.productName}</div>
+                    <div style={{fontSize:11,color:C.text2,marginTop:2,display:'flex',gap:10}}>
+                      <span>Pedido: <strong>{l.qty}</strong></span>
+                      <span>Estoque: <strong style={{color:l.semCtrl?C.text2:l.emEstoque<l.qty?C.red:C.green}}>{l.semCtrl?'—':l.emEstoque}</strong></span>
+                    </div>
+                  </div>
+                  <div style={{flexShrink:0,marginLeft:12}}>
+                    {l.produzir>0
+                      ? <div style={{background:'#fef2f2',borderRadius:10,padding:'5px 12px',fontWeight:800,fontSize:14,color:'#b91c1c',textAlign:'center'}}>+{l.produzir} a produzir</div>
+                      : <div style={{background:'#f0fdf4',borderRadius:10,padding:'5px 12px',fontWeight:700,fontSize:13,color:'#15803d',textAlign:'center'}}>✓ no estoque</div>
+                    }
+                  </div>
+                </div>
+              ))}
+              <div style={{marginTop:10,paddingTop:8,borderTop:`1px solid ${C.border}`,fontWeight:800,fontSize:13,
+                  color:totalProduzir>0?'#b91c1c':'#15803d'}}>
+                {totalProduzir>0
+                  ? `⚠️ Total a produzir: ${totalProduzir} pizza${totalProduzir>1?'s':''}`
+                  : '✓ Estoque suficiente para este evento'}
+              </div>
+            </div>
+          );
+        })()}
+
         {!cur.paid&&(
           <div style={{marginBottom:16}}>
             <label className="label" style={{marginBottom:10}}>Status</label>
