@@ -993,6 +993,7 @@ function App({ currentUserEmail, onLogout }) {
 
       {modal==='add_trans'  && <TransModal   ctx={ctx} initType={mData?.type}/>}
       {modal==='add_order'  && <OrderModal   ctx={ctx}/>}
+      {modal==='edit_order' && <OrderModal   ctx={ctx} order={mData}/>}
       {modal==='add_event'  && <EventModal   ctx={ctx} event={mData}/>}
       {modal==='add_conta'  && <ContaModal   ctx={ctx} initTipo={mData?.tipo||'receber'} conta={mData?.id?mData:null}/>}
       {modal==='pagar_conta' && <PagamentoModal ctx={ctx} conta={mData}/>}
@@ -1731,20 +1732,22 @@ function TransModal({ ctx, initType='entrada' }) {
 }
 
 // ── MODAL: ORDER ──────────────────────────────────────────────────────────
-function OrderModal({ ctx }) {
+function OrderModal({ ctx, order }) {
   // Sabores e preços vêm direto do Estoque (ctx.sabores), para ficar sempre
   // igual ao que está cadastrado no sistema — evita listas/preços divergentes.
+  const editing = !!order;
   const grandes = ctx.sabores.filter(p=>p.cat==='grande');
   const minis   = ctx.sabores.filter(p=>p.cat==='mini');
   const doces   = ctx.sabores.filter(p=>p.cat==='doce');
   const allProds= ctx.sabores;
 
-  const [client,  setClient]  = useState('');
-  const [wa,      setWa]      = useState('');
-  const [items,   setItems]   = useState([{productId:allProds[0]?.id,productName:allProds[0]?.nome,qty:1,unitPrice:allProds[0]?.preco||0,cat:allProds[0]?.cat}]);
-  const [delDate, setDelDate] = useState('');
-  const [addr,    setAddr]    = useState('');
-  const [notes,   setNotes]   = useState('');
+  const defaultItem = {productId:allProds[0]?.id,productName:allProds[0]?.nome,qty:1,unitPrice:allProds[0]?.preco||0,cat:allProds[0]?.cat};
+  const [client,  setClient]  = useState(order?.client || '');
+  const [wa,      setWa]      = useState(order?.whatsapp || '');
+  const [items,   setItems]   = useState(order?.items?.length ? order.items.map(i=>({...i})) : [defaultItem]);
+  const [delDate, setDelDate] = useState(order?.deliveryDate || '');
+  const [addr,    setAddr]    = useState(order?.deliveryAddress || '');
+  const [notes,   setNotes]   = useState(order?.notes || '');
   const [showClienteSugg, setShowClienteSugg] = useState(false);
 
   const total=items.reduce((s,i)=>s+(i.qty*i.unitPrice),0);
@@ -1771,14 +1774,28 @@ function OrderModal({ ctx }) {
     const src=cat==='grande'?grandes:cat==='mini'?minis:doces;
     setItems([...items,{productId:src[0]?.id,productName:src[0]?.nome,qty:1,unitPrice:src[0]?.preco||0,cat}]);
   };
-  const save=()=>{ if(!client)return; ctx.addOrder({client,whatsapp:wa,items,deliveryDate:delDate,deliveryAddress:addr,notes,total,status:'pending',paid:false}); ctx.close(); };
+  const save=()=>{
+    if(!client)return;
+    const dados={client,whatsapp:wa,items,deliveryDate:delDate,deliveryAddress:addr,notes,total};
+    if(editing){
+      // Se o estoque já foi debitado pelos itens antigos, reverte e aplica os novos
+      if(order.estoqueDebitado){
+        ctx.reporEstoquePedido(order.items||[]);
+        ctx.debitarEstoquePedido(items);
+      }
+      ctx.updOrder(order.id, dados);
+    } else {
+      ctx.addOrder({...dados,status:'pending',paid:false});
+    }
+    ctx.close();
+  };
 
   return (
     <div className="overlay" onClick={ctx.close}>
       <div className="sheet" onClick={e=>e.stopPropagation()}>
         <div className="sheet-handle"/>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
-          <div style={{fontSize:19,fontWeight:800}}>Novo Pedido</div>
+          <div style={{fontSize:19,fontWeight:800}}>{editing?'Editar Pedido':'Novo Pedido'}</div>
           <button onClick={ctx.close} style={{background:'none',border:'none',cursor:'pointer'}}>{I.x('#bbb',24)}</button>
         </div>
 
@@ -1855,7 +1872,7 @@ function OrderModal({ ctx }) {
         <label className="label">Observações</label>
         <textarea className="input" style={{marginBottom:22,height:70,resize:'none'}} placeholder="Troco, horário, etc." value={notes} onChange={e=>setNotes(e.target.value)}/>
 
-        <button className="btn-primary" onClick={save} disabled={!client}>Salvar Pedido</button>
+        <button className="btn-primary" onClick={save} disabled={!client}>{editing?'Salvar Alterações':'Salvar Pedido'}</button>
       </div>
     </div>
   );
@@ -1992,7 +2009,13 @@ function OrderDetail({ ctx, order }) {
         <div className="sheet-handle"/>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:18}}>
           <div style={{fontSize:19,fontWeight:800}}>Detalhes do Pedido</div>
-          <button onClick={ctx.close} style={{background:'none',border:'none',cursor:'pointer'}}>{I.x('#bbb',24)}</button>
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            {!cur.paid&&(
+              <button onClick={()=>{ ctx.close(); setTimeout(()=>ctx.open('edit_order',cur),50); }}
+                style={{background:'#f0ebe4',border:'none',borderRadius:10,padding:'6px 12px',cursor:'pointer',fontSize:12,fontWeight:700,fontFamily:'inherit'}}>Editar</button>
+            )}
+            <button onClick={ctx.close} style={{background:'none',border:'none',cursor:'pointer'}}>{I.x('#bbb',24)}</button>
+          </div>
         </div>
 
         <div style={{background:'#faf5ee',borderRadius:16,padding:16,marginBottom:16,border:`1px solid ${C.border}`}}>
@@ -4147,6 +4170,7 @@ function Estoque({ ctx }) {
   const [sfPreco,setSfPreco]= useState('');
   const [sfDesc, setSfDesc] = useState('');
   const [sfReceita, setSfReceita] = useState([]); // [{materiaPrimaId, quantidade, unidade}]
+  const [buscaSabor, setBuscaSabor] = useState('');
 
   const abrirNovoSabor = (cat) => { setSaborForm({}); setSfNome(''); setSfCat(cat); setSfPreco(''); setSfDesc(''); setSfReceita([]); };
   const abrirEditarSabor = (s) => { setSaborForm(s); setSfNome(s.nome); setSfCat(s.cat); setSfPreco(String(s.preco||'')); setSfDesc(s.desc||''); setSfReceita(s.receita||[]); };
@@ -4222,9 +4246,11 @@ function Estoque({ ctx }) {
     });
   });
   const byVendas = (a, b) => (vendasPorNome[b.nome]||0) - (vendasPorNome[a.nome]||0);
-  const grandes = ctx.sabores.filter(p=>p.cat==='grande').sort(byVendas);
-  const minis   = ctx.sabores.filter(p=>p.cat==='mini').sort(byVendas);
-  const doces   = ctx.sabores.filter(p=>p.cat==='doce').sort(byVendas);
+  const buscaLower = buscaSabor.trim().toLowerCase();
+  const filtrarBusca = p => !buscaLower || p.nome.toLowerCase().includes(buscaLower);
+  const grandes = ctx.sabores.filter(p=>p.cat==='grande').sort(byVendas).filter(filtrarBusca);
+  const minis   = ctx.sabores.filter(p=>p.cat==='mini').sort(byVendas).filter(filtrarBusca);
+  const doces   = ctx.sabores.filter(p=>p.cat==='doce').sort(byVendas).filter(filtrarBusca);
 
   const StockRow = ({p}) => {
     const qtd = ctx.estoqueData[p.nome];
@@ -4282,6 +4308,21 @@ function Estoque({ ctx }) {
       {subTab==='estoque'&&(
         <div>
           <div style={{fontSize:12,color:C.text2,marginBottom:12}}>Toque em um sabor para ajustar o estoque, ou em "Editar" para alterar nome/preço/descrição. Alterações aqui aparecem automaticamente no site de pedidos. Sabores com estoque zero ficam bloqueados no cardápio online.</div>
+
+          <div style={{position:'relative',marginBottom:14}}>
+            <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',fontSize:15,pointerEvents:'none'}}>🔍</span>
+            <input
+              className="input"
+              placeholder="Pesquisar sabor..."
+              value={buscaSabor}
+              onChange={e=>setBuscaSabor(e.target.value)}
+              style={{paddingLeft:36,marginBottom:0}}
+            />
+            {buscaSabor && (
+              <button onClick={()=>setBuscaSabor('')}
+                style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:16,color:C.text2,lineHeight:1}}>✕</button>
+            )}
+          </div>
 
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
             <div className="section-label">Pizzas Grandes</div>
