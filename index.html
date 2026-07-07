@@ -118,7 +118,19 @@
        .overlay e .tabbar declaradas mais acima (mesma especificidade — quem vem
        depois no arquivo é quem vence). */
     @media (min-width: 700px) {
-      #root, .overlay, .tabbar { max-width: 960px; }
+      #root, .overlay { max-width: 960px; }
+      /* ── Sidebar (desktop) ── */
+      .tabbar { position: sticky; top: 0; left: auto; bottom: auto; transform: none;
+        width: 210px; max-width: 210px; min-height: 100vh; height: 100vh;
+        flex-direction: column; align-items: stretch; flex-shrink: 0;
+        border-top: none; border-right: 1px solid var(--border);
+        box-shadow: 2px 0 16px rgba(100,60,30,0.07);
+        overflow-x: hidden; overflow-y: auto; padding: 20px 0; z-index: 50; }
+      .tab { flex: 0 0 auto; flex-direction: row; align-items: center;
+        gap: 12px; padding: 12px 18px; justify-content: flex-start;
+        border-radius: 12px; margin: 2px 8px; }
+      .tab:active { transform: none; }
+      .tab-lbl { font-size: 13px; font-weight: 600; }
     }
   </style>
 </head>
@@ -890,7 +902,34 @@ function App({ currentUserEmail, onLogout }) {
   };
 
   return (
-    <div style={{paddingBottom:80, minHeight:'100vh'}}>
+    <div style={{display:'flex', minHeight:'100vh', alignItems:'stretch'}}>
+
+      {/* ── SIDEBAR (desktop) / TAB BAR (mobile) ── */}
+      <div className="tabbar">
+        {TABS.map(t=>{
+          const isContas    = t.id==='contas';
+          const isOrders    = t.id==='orders';
+          const cVenc       = isContas ? ctx.contas.filter(c=>!c.pago&&c.vencimento&&c.vencimento<today()).length : 0;
+          const ordersBadge = isOrders ? ctx.newCardapioCount : 0;
+          const badgeVal    = isContas ? cVenc : ordersBadge;
+          const ativo       = tab===t.id;
+          return (
+            <div key={t.id} className="tab" onClick={()=>{ setTab(t.id); if(t.id==='orders') setNewCardapioCount(0); }}
+              style={{position:'relative', background:ativo?'#fff5f5':'transparent'}}>
+              {t.icon(ativo ? C.red : '#bbb', 22)}
+              {badgeVal>0 && (
+                <span style={{position:'absolute',top:8,right:12,background:'#b91c1c',color:'white',borderRadius:'50%',width:16,height:16,fontSize:9,fontWeight:900,display:'flex',alignItems:'center',justifyContent:'center',border:'2px solid white'}}>
+                  {badgeVal>9?'9+':badgeVal}
+                </span>
+              )}
+              <span className="tab-lbl" style={{color:ativo?C.red:'#9ca3af'}}>{t.lbl}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── MAIN CONTENT ── */}
+      <div style={{flex:1, minWidth:0, paddingBottom:80}}>
 
       {/* ── HEADER ── */}
       <div style={{background:`linear-gradient(135deg, ${C.red} 0%, ${C.red2} 100%)`, padding:'16px 18px 14px', position:'sticky', top:0, zIndex:50, boxShadow:'0 4px 20px rgba(200,37,24,0.25)'}}>
@@ -946,27 +985,7 @@ function App({ currentUserEmail, onLogout }) {
         {tab==='whatsapp'    && <WhatsApp    ctx={ctx}/>}
       </div>
 
-      {/* ── TAB BAR ── */}
-      <div className="tabbar">
-        {TABS.map(t=>{
-          const isContas     = t.id==='contas';
-          const isOrders     = t.id==='orders';
-          const cVenc        = isContas  ? ctx.contas.filter(c=>!c.pago&&c.vencimento&&c.vencimento<today()).length : 0;
-          const ordersBadge  = isOrders  ? ctx.newCardapioCount : 0;
-          const badgeVal     = isContas  ? cVenc : ordersBadge;
-          return (
-            <div key={t.id} className="tab" onClick={()=>{ setTab(t.id); if(t.id==='orders') setNewCardapioCount(0); }} style={{position:'relative'}}>
-              {t.icon(tab===t.id ? C.red : '#bbb', 22)}
-              {badgeVal>0 && (
-                <span style={{position:'absolute',top:2,right:14,background:'#b91c1c',color:'white',borderRadius:'50%',width:16,height:16,fontSize:9,fontWeight:900,display:'flex',alignItems:'center',justifyContent:'center',border:'2px solid var(--cream)'}}>
-                  {badgeVal>9?'9+':badgeVal}
-                </span>
-              )}
-              <span className="tab-lbl" style={{color:tab===t.id?C.red:'#bbb'}}>{t.lbl}</span>
-            </div>
-          );
-        })}
-      </div>
+      </div>{/* fim main content */}
 
       {modal==='add_trans'  && <TransModal   ctx={ctx} initType={mData?.type}/>}
       {modal==='add_order'  && <OrderModal   ctx={ctx}/>}
@@ -3042,6 +3061,7 @@ function Contas({ ctx }) {
   const [showPagas, setShowPagas] = useState(false);
   const [view, setView] = useState('lista'); // 'lista' | 'calendario'
   const [buscaConta, setBuscaConta] = useState('');
+  const [contaDetalhe, setContaDetalhe] = useState(null);
 
   const tod = today();
   const isVencido = c => !c.pago && c.vencimento && c.vencimento < tod;
@@ -3357,25 +3377,89 @@ function Contas({ ctx }) {
           <span style={{fontSize:12,color:'#aaa'}}>{showPagas?'▲':'▼'}</span>
         </button>
         {showPagas && pagasExib.map(c=>(
-          <div key={c.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 14px',background:'#fafaf8',borderRadius:12,border:'1px solid #f0eae0',marginBottom:6,opacity:0.65}}>
-            <div>
-              <div style={{fontWeight:600,fontSize:14,color:C.text2,textDecoration:'line-through'}}>{c.descricao}</div>
+          <div key={c.id} onClick={()=>setContaDetalhe(c)} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 14px',background:'#fafaf8',borderRadius:12,border:'1px solid #f0eae0',marginBottom:6,opacity:0.7,cursor:'pointer'}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:600,fontSize:14,color:C.text2}}>{c.descricao}</div>
               <div style={{display:'flex',gap:6,marginTop:3,flexWrap:'wrap'}}>
                 {c.pagoEm && <span style={{fontSize:11,color:'#aaa'}}>{tipo==='receber'?'Recebido':'Pago'} em {fmtDate(c.pagoEm)}</span>}
-                {c.notaFiscal && <span className="badge" style={{background:'#f0fdf4',color:'#666',fontSize:10}}>NF: {c.notaFiscal}</span>}
-                {!!c.desconto && <span className="badge" style={{background:'#fff7ed',color:'#b45309',fontSize:10}}>Desconto: {fmtBRL(c.desconto)}</span>}
-                {!!c.juros && <span className="badge" style={{background:'#fef2f2',color:'#b91c1c',fontSize:10}}>Juros: +{fmtBRL(c.juros)}</span>}
+                {c.cliente && <span style={{fontSize:11,color:'#aaa'}}>· {c.cliente}</span>}
+                {!!c.juros && <span className="badge" style={{background:'#fef2f2',color:'#b91c1c',fontSize:10}}>+juros</span>}
               </div>
             </div>
-            <div style={{display:'flex',alignItems:'center',gap:8}}>
-              <div style={{textAlign:'right'}}>
-                {(!!c.desconto || !!c.juros) && <div style={{fontSize:11,color:'#ccc',textDecoration:'line-through'}}>{fmtBRL(c.valor)}</div>}
-                <div style={{fontWeight:700,color:'#aaa',fontSize:14}}>{fmtBRL((c.desconto||c.juros)?c.valorRecebido:c.valor)}</div>
-              </div>
-              <button onClick={()=>ctx.delConta(c.id)} style={{background:'transparent',border:'none',cursor:'pointer',padding:4}}>{I.trash('#ccc',13)}</button>
+            <div style={{display:'flex',alignItems:'center',gap:8,flexShrink:0,marginLeft:8}}>
+              <div style={{fontWeight:700,color:'#aaa',fontSize:14}}>{fmtBRL((c.desconto||c.juros)?c.valorRecebido:c.valor)}</div>
+              <span style={{fontSize:11,color:'#ccc'}}>›</span>
             </div>
           </div>
         ))}
+        {/* Modal de detalhe de conta paga */}
+        {contaDetalhe&&(
+          <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.45)',zIndex:1000,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={()=>setContaDetalhe(null)}>
+            <div style={{background:'white',borderRadius:'22px 22px 0 0',padding:24,width:'100%',maxWidth:520,maxHeight:'85vh',overflowY:'auto',paddingBottom:40}} onClick={e=>e.stopPropagation()}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:18}}>
+                <div style={{fontWeight:800,fontSize:17}}>{contaDetalhe.tipo==='receber'?'✅ Recebido':'✅ Pago'}</div>
+                <button onClick={()=>setContaDetalhe(null)} style={{background:'#f0ebe4',border:'none',borderRadius:20,width:32,height:32,cursor:'pointer',fontSize:16,fontFamily:'inherit'}}>×</button>
+              </div>
+
+              {/* Descrição */}
+              <div style={{background:'#fafafa',borderRadius:14,padding:14,marginBottom:12}}>
+                <div style={{fontSize:11,color:C.text2,fontWeight:700,marginBottom:4,textTransform:'uppercase',letterSpacing:'0.5px'}}>O que foi {contaDetalhe.tipo==='receber'?'vendido/recebido':'comprado/pago'}</div>
+                <div style={{fontWeight:700,fontSize:16}}>{contaDetalhe.descricao}</div>
+                {contaDetalhe.categoria&&<div style={{fontSize:12,color:C.text2,marginTop:4}}>Categoria: {contaDetalhe.categoria}</div>}
+                {contaDetalhe.cliente&&<div style={{fontSize:12,color:C.text2,marginTop:2}}>{contaDetalhe.tipo==='receber'?'Cliente':'Fornecedor'}: {contaDetalhe.cliente}</div>}
+                {contaDetalhe.notaFiscal&&<div style={{fontSize:12,color:C.green,marginTop:2}}>NF: {contaDetalhe.notaFiscal}</div>}
+              </div>
+
+              {/* Quantidades */}
+              {(contaDetalhe.quantidade!=null||contaDetalhe.itens?.length>0)&&(
+                <div style={{background:'#fafafa',borderRadius:14,padding:14,marginBottom:12}}>
+                  <div style={{fontSize:11,color:C.text2,fontWeight:700,marginBottom:8,textTransform:'uppercase',letterSpacing:'0.5px'}}>Quantidade</div>
+                  {contaDetalhe.itens?.length>0
+                    ? contaDetalhe.itens.map((it,i)=>(
+                        <div key={i} style={{display:'flex',justifyContent:'space-between',fontSize:13,paddingBottom:4,borderBottom:i<contaDetalhe.itens.length-1?`1px solid ${C.border}`:'none',marginBottom:4}}>
+                          <span>{it.nome}</span>
+                          <span style={{fontWeight:600}}>{it.quantidade} {it.unidade} · {fmtBRL(it.valor)}</span>
+                        </div>
+                      ))
+                    : <div style={{fontSize:13}}>{contaDetalhe.quantidade} {contaDetalhe.unidade||''}</div>
+                  }
+                </div>
+              )}
+
+              {/* Datas */}
+              <div style={{background:'#fafafa',borderRadius:14,padding:14,marginBottom:12}}>
+                <div style={{fontSize:11,color:C.text2,fontWeight:700,marginBottom:8,textTransform:'uppercase',letterSpacing:'0.5px'}}>Datas</div>
+                {contaDetalhe.vencimento&&<div style={{display:'flex',justifyContent:'space-between',fontSize:13,marginBottom:4}}><span style={{color:C.text2}}>Vencimento</span><span style={{fontWeight:600}}>{fmtDate(contaDetalhe.vencimento)}</span></div>}
+                {contaDetalhe.pagoEm&&<div style={{display:'flex',justifyContent:'space-between',fontSize:13}}><span style={{color:C.text2}}>{contaDetalhe.tipo==='receber'?'Recebido em':'Pago em'}</span><span style={{fontWeight:600,color:C.green}}>{fmtDate(contaDetalhe.pagoEm)}</span></div>}
+              </div>
+
+              {/* Valores */}
+              <div style={{background:'#fafafa',borderRadius:14,padding:14,marginBottom:16}}>
+                <div style={{fontSize:11,color:C.text2,fontWeight:700,marginBottom:8,textTransform:'uppercase',letterSpacing:'0.5px'}}>Valores</div>
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:13,marginBottom:6}}>
+                  <span style={{color:C.text2}}>Valor original</span>
+                  <span style={{fontWeight:600}}>{fmtBRL(contaDetalhe.valor)}</span>
+                </div>
+                {!!contaDetalhe.desconto&&<div style={{display:'flex',justifyContent:'space-between',fontSize:13,marginBottom:6}}>
+                  <span style={{color:C.green}}>Desconto</span>
+                  <span style={{fontWeight:600,color:C.green}}>− {fmtBRL(contaDetalhe.desconto)}</span>
+                </div>}
+                {!!contaDetalhe.juros&&<div style={{display:'flex',justifyContent:'space-between',fontSize:13,marginBottom:6}}>
+                  <span style={{color:'#b91c1c'}}>Juros / taxas</span>
+                  <span style={{fontWeight:700,color:'#b91c1c'}}>+ {fmtBRL(contaDetalhe.juros)}</span>
+                </div>}
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:15,paddingTop:8,borderTop:`1px solid ${C.border}`,marginTop:4}}>
+                  <span style={{fontWeight:700}}>Total {contaDetalhe.tipo==='receber'?'recebido':'pago'}</span>
+                  <span style={{fontWeight:900,color:contaDetalhe.tipo==='receber'?C.green:C.red}}>{fmtBRL(contaDetalhe.valorRecebido||contaDetalhe.valor)}</span>
+                </div>
+              </div>
+
+              <button onClick={()=>ctx.delConta(contaDetalhe.id)} style={{width:'100%',background:'transparent',border:`1px solid ${C.border}`,borderRadius:12,padding:12,color:'#ccc',cursor:'pointer',fontFamily:'inherit',fontSize:13}}>
+                Excluir registro
+              </button>
+            </div>
+          </div>
+        )}
       </>}
       </>}
     </div>
@@ -4046,11 +4130,12 @@ function Estoque({ ctx }) {
   const [fEdit,       setFEdit]       = useState(null);
   const [fBusca,      setFBusca]      = useState('');
   // form de cliente (criar/editar)
-  const [cNome,    setCNome]    = useState('');
-  const [cWhats,   setCWhats]   = useState('');
-  const [cEndereco,setCEndereco]= useState('');
-  const [cObs,     setCObs]     = useState('');
-  const [cEdit,    setCEdit]    = useState(null);
+  const [cNome,        setCNome]        = useState('');
+  const [cRazaoSocial, setCRazaoSocial] = useState('');
+  const [cWhats,       setCWhats]       = useState('');
+  const [cEndereco,    setCEndereco]    = useState('');
+  const [cObs,         setCObs]         = useState('');
+  const [cEdit,        setCEdit]        = useState(null);
   // form de sabor (criar/editar) — null = fechado, {} = novo, objeto = editando
   const [saborForm, setSaborForm] = useState(null);
   const [sfNome, setSfNome] = useState('');
@@ -4113,13 +4198,14 @@ function Estoque({ ctx }) {
   const salvarCliente = () => {
     const nome = cNome.trim();
     if (!nome) return;
+    const dados = {nome, razaoSocial:cRazaoSocial.trim(), whatsapp:cWhats.trim(), endereco:cEndereco.trim(), obs:cObs.trim()};
     if (cEdit) {
-      ctx.updCliente(cEdit.id, {nome, whatsapp:cWhats.trim(), endereco:cEndereco.trim(), obs:cObs.trim()});
+      ctx.updCliente(cEdit.id, dados);
       setCEdit(null);
     } else {
-      ctx.addCliente({nome, whatsapp:cWhats.trim(), endereco:cEndereco.trim(), obs:cObs.trim()});
+      ctx.addCliente(dados);
     }
-    setCNome(''); setCWhats(''); setCEndereco(''); setCObs('');
+    setCNome(''); setCRazaoSocial(''); setCWhats(''); setCEndereco(''); setCObs('');
   };
 
   // Ranking de vendas por sabor (todos os pedidos não cancelados)
@@ -4306,8 +4392,10 @@ function Estoque({ ctx }) {
         <div>
           <div className="card" style={{marginBottom:14}}>
             <div style={{fontWeight:700,fontSize:15,marginBottom:12}}>{cEdit?'Editar Cliente':'Novo Cliente'}</div>
-            <label className="label">Nome *</label>
-            <input className="input" placeholder="Nome do cliente" value={cNome} onChange={e=>setCNome(e.target.value)} style={{marginBottom:10}}/>
+            <label className="label">Nome Fantasia *</label>
+            <input className="input" placeholder="Nome pelo qual é conhecido" value={cNome} onChange={e=>setCNome(e.target.value)} style={{marginBottom:10}}/>
+            <label className="label">Razão Social</label>
+            <input className="input" placeholder="Razão social / nome completo" value={cRazaoSocial} onChange={e=>setCRazaoSocial(e.target.value)} style={{marginBottom:10}}/>
             <label className="label">WhatsApp</label>
             <input className="input" placeholder="(48) 99999-9999" value={cWhats} onChange={e=>setCWhats(e.target.value)} style={{marginBottom:10}}/>
             <label className="label">Endereço</label>
@@ -4319,7 +4407,7 @@ function Estoque({ ctx }) {
                 style={{flex:1,background:cNome.trim()?C.red:'#e5e7eb',border:'none',borderRadius:12,padding:12,color:cNome.trim()?'white':'#9ca3af',fontWeight:700,cursor:cNome.trim()?'pointer':'default',fontFamily:'inherit'}}>
                 {cEdit?'Salvar':'Cadastrar'}
               </button>
-              {cEdit&&<button onClick={()=>{setCEdit(null);setCNome('');setCWhats('');setCEndereco('');setCObs('');}}
+              {cEdit&&<button onClick={()=>{setCEdit(null);setCNome('');setCRazaoSocial('');setCWhats('');setCEndereco('');setCObs('');}}
                 style={{background:'#f0ebe4',border:'none',borderRadius:12,padding:'12px 16px',cursor:'pointer',fontFamily:'inherit'}}>
                 Cancelar
               </button>}
@@ -4336,6 +4424,7 @@ function Estoque({ ctx }) {
               <div key={c.id} className="card" style={{marginBottom:8,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:700,fontSize:14}}>{c.nome}</div>
+                  {c.razaoSocial&&<div style={{fontSize:11,color:'#9ca3af',marginTop:1}}>{c.razaoSocial}</div>}
                   {c.whatsapp&&(
                     <div style={{fontSize:12,color:C.text2,marginTop:2,display:'flex',alignItems:'center',gap:6}}>
                       {c.whatsapp}
@@ -4353,7 +4442,7 @@ function Estoque({ ctx }) {
                   {c.obs&&<div style={{fontSize:11,color:C.text2,marginTop:2,fontStyle:'italic'}}>{c.obs}</div>}
                 </div>
                 <div style={{display:'flex',gap:6,marginLeft:8}}>
-                  <button onClick={()=>{setCEdit(c);setCNome(c.nome);setCWhats(c.whatsapp||'');setCEndereco(c.endereco||'');setCObs(c.obs||'');}}
+                  <button onClick={()=>{setCEdit(c);setCNome(c.nome);setCRazaoSocial(c.razaoSocial||'');setCWhats(c.whatsapp||'');setCEndereco(c.endereco||'');setCObs(c.obs||'');}}
                     style={{background:'#f0ebe4',border:'none',borderRadius:10,padding:'6px 12px',cursor:'pointer',fontSize:12,fontFamily:'inherit'}}>Editar</button>
                   <button onClick={()=>ctx.delCliente(c.id)}
                     style={{background:'transparent',border:'none',cursor:'pointer',padding:6}}>{I.trash('#ccc',13)}</button>
