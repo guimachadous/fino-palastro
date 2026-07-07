@@ -483,7 +483,23 @@ function App({ currentUserEmail, onLogout }) {
       }
     }
   };
-  const updEvent  = (id,d) => setEvents(p => p.map(e => e.id===id?{...e,...d}:e));
+  const updEvent  = (id,d) => {
+    const old = events.find(e => e.id===id);
+    setEvents(p => p.map(e => e.id===id?{...e,...d}:e));
+    // Debita/repõe estoque para Eventos Express ao mudar de status
+    if (old && old.type==='express' && d.status && d.status!==old.status) {
+      const DEBITA = ['confirmado','realizado'];
+      const entrouEmDebito = DEBITA.includes(d.status) && !DEBITA.includes(old.status);
+      const saiuDoDebito   = !DEBITA.includes(d.status) && DEBITA.includes(old.status);
+      if (entrouEmDebito && !old.estoqueDebitado) {
+        debitarEstoquePedido(old.items||[]);
+        setEvents(p => p.map(e => e.id===id?{...e,...d,estoqueDebitado:true}:e));
+      } else if (saiuDoDebito && old.estoqueDebitado) {
+        reporEstoquePedido(old.items||[]);
+        setEvents(p => p.map(e => e.id===id?{...e,...d,estoqueDebitado:false}:e));
+      }
+    }
+  };
   const delTrans  = id => setTrans(p => p.filter(t => t.id!==id));
   const addConta   = c => setContas(p => [{...c, id:genId(), criadoEm:today()}, ...p]);
   const updConta   = (id,d) => setContas(p => p.map(c => c.id===id?{...c,...d}:c));
@@ -2116,7 +2132,14 @@ function OrderDetail({ ctx, order }) {
 function EventDetail({ ctx, event }) {
   const [cur,setCur]=useState(event);
   if(!event)return null;
-  const setStatus=s=>{ ctx.updEvent(event.id,{status:s}); setCur({...cur,status:s}); };
+  const setStatus=s=>{
+    const DEBITA=['confirmado','realizado'];
+    let estoqueDebitado=cur.estoqueDebitado;
+    if(DEBITA.includes(s)&&!DEBITA.includes(cur.status)&&!estoqueDebitado) estoqueDebitado=true;
+    else if(!DEBITA.includes(s)&&DEBITA.includes(cur.status)&&estoqueDebitado) estoqueDebitado=false;
+    ctx.updEvent(event.id,{status:s});
+    setCur({...cur,status:s,estoqueDebitado});
+  };
   const handlePaid=()=>{ ctx.paidEvent(event); ctx.close(); };
 
   return (
@@ -2200,6 +2223,16 @@ function EventDetail({ ctx, event }) {
                 <button key={s} onClick={()=>setStatus(s)} style={{padding:'8px 14px',borderRadius:20,border:'none',cursor:'pointer',fontSize:13,fontWeight:700,background:cur.status===s?C.text:'#f0ebe4',color:cur.status===s?'white':C.brown,fontFamily:'inherit'}}>{S_LBL[s]||s}</button>
               ))}
             </div>
+            {cur.type==='express'&&cur.estoqueDebitado&&(
+              <div style={{marginTop:10,display:'flex',alignItems:'center',gap:6,fontSize:12,color:C.green,fontWeight:700}}>
+                {I.check(C.green,14)} Itens já retirados do estoque
+              </div>
+            )}
+            {cur.type==='express'&&!cur.estoqueDebitado&&['confirmado','realizado'].includes(cur.status)===false&&cur.status!=='cancelado'&&Array.isArray(cur.items)&&cur.items.filter(i=>i.productId).length>0&&(
+              <div style={{marginTop:10,fontSize:12,color:C.text2}}>
+                O estoque será debitado ao confirmar ou realizar este evento.
+              </div>
+            )}
           </div>
         )}
 
