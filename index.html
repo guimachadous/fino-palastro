@@ -322,6 +322,7 @@ const PIZZAS_ESTOQUE_DEFAULT = [
   {id:'pe_d1',nome:'Laka Oreo',                                       cat:'doce',preco:60,desc:'Chocolate branco Laka, bolacha Oreo e leite condensado'},
   {id:'pe_d2',nome:'Chocolate Preto e Branco com Morango',            cat:'doce',preco:60,desc:'Chocolate preto, chocolate branco, morango e leite condensado'},
   {id:'pe_d3',nome:'Laka com Geleia de Frutas Vermelhas e Mirtilo',   cat:'doce',preco:60,desc:'Chocolate branco Laka, geleia de frutas vermelhas, mirtilo e leite condensado'},
+  {id:'pe_a1',nome:'Rotolina de Linguiça Blumenau com Catupiry',      cat:'antepasto',preco:0,desc:''},
 ];
 const PAYMENTS = ['Pix','Dinheiro','Cartão Débito','Cartão Crédito'];
 
@@ -445,6 +446,14 @@ function App({ currentUserEmail, onLogout }) {
   useEffect(()=>{ if(initDone.current) db.set('fp_estoque',      estoqueData);  }, [estoqueData]);
   useEffect(()=>{ if(initDone.current) db.set('fp_estoque_hist', estoqueHist);  }, [estoqueHist]);
   useEffect(()=>{ if(initDone.current) db.set('fp_sabores',      sabores);      }, [sabores]);
+  // Migração: adiciona produtos novos do default que ainda não existem no catálogo salvo
+  const _migratedRef = React.useRef(false);
+  useEffect(()=>{
+    if(sabores.length===0||_migratedRef.current) return;
+    _migratedRef.current=true;
+    const nomes=sabores.map(s=>s.nome);
+    PIZZAS_ESTOQUE_DEFAULT.filter(p=>!nomes.includes(p.nome)).forEach(p=>addSabor(p));
+  },[sabores]);
   useEffect(()=>{ if(initDone.current) db.set('fp_cats_receber', catsReceber);  }, [catsReceber]);
   useEffect(()=>{ if(initDone.current) db.set('fp_cats_in',      catsIn);       }, [catsIn]);
   useEffect(()=>{ if(initDone.current) db.set('fp_cats_out',     catsOut);      }, [catsOut]);
@@ -1704,15 +1713,20 @@ function TransModal({ ctx, initType='entrada' }) {
               <div key={idx} style={{display:'flex',gap:6,alignItems:'center',marginBottom:8}}>
                 <select className="input" style={{flex:1,padding:'10px 8px'}} value={item.productId} onChange={e=>updItem(idx,'productId',e.target.value)}>
                   <option value="">Selecionar...</option>
-                  <optgroup label="Grandes">
+                  <optgroup label="Pizzas Tamanho Tradicional (30cm)">
                     {ctx.sabores.filter(p=>p.cat==='grande').map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}
                   </optgroup>
-                  <optgroup label="Mini">
+                  <optgroup label="Mini Pizzas">
                     {ctx.sabores.filter(p=>p.cat==='mini').map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}
                   </optgroup>
-                  <optgroup label="Doces">
+                  <optgroup label="Pizzas Tamanho Tradicional Doce (30cm)">
                     {ctx.sabores.filter(p=>p.cat==='doce').map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}
                   </optgroup>
+                  {ctx.sabores.filter(p=>p.cat==='antepasto').length>0&&(
+                    <optgroup label="Antepastos">
+                      {ctx.sabores.filter(p=>p.cat==='antepasto').map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}
+                    </optgroup>
+                  )}
                 </select>
                 <input className="input" type="number" min="1" style={{width:56,padding:'10px 8px',textAlign:'center'}} value={item.qty} onChange={e=>updItem(idx,'qty',e.target.value)}/>
                 {items.length>1&&<button onClick={()=>setItems(items.filter((_,i)=>i!==idx))} style={{background:'none',border:'none',cursor:'pointer',flexShrink:0}}>{I.x(C.red,20)}</button>}
@@ -1752,10 +1766,11 @@ function OrderModal({ ctx, order }) {
   // Sabores e preços vêm direto do Estoque (ctx.sabores), para ficar sempre
   // igual ao que está cadastrado no sistema — evita listas/preços divergentes.
   const editing = !!order;
-  const grandes = ctx.sabores.filter(p=>p.cat==='grande');
-  const minis   = ctx.sabores.filter(p=>p.cat==='mini');
-  const doces   = ctx.sabores.filter(p=>p.cat==='doce');
-  const allProds= ctx.sabores;
+  const grandes    = ctx.sabores.filter(p=>p.cat==='grande');
+  const minis      = ctx.sabores.filter(p=>p.cat==='mini');
+  const doces      = ctx.sabores.filter(p=>p.cat==='doce');
+  const antepastos = ctx.sabores.filter(p=>p.cat==='antepasto');
+  const allProds   = ctx.sabores;
 
   const defaultItem = {productId:allProds[0]?.id,productName:allProds[0]?.nome,qty:1,unitPrice:allProds[0]?.preco||0,cat:allProds[0]?.cat};
   const [client,  setClient]  = useState(order?.client || '');
@@ -1790,7 +1805,7 @@ function OrderModal({ ctx, order }) {
     setItems(n);
   };
   const addItem=(cat)=>{
-    const src=cat==='grande'?grandes:cat==='mini'?minis:doces;
+    const src=cat==='grande'?grandes:cat==='mini'?minis:cat==='doce'?doces:antepastos;
     setItems([...items,{productId:src[0]?.id,productName:src[0]?.nome,qty:1,unitPrice:src[0]?.preco||0,cat}]);
   };
   const save=()=>{
@@ -1845,21 +1860,26 @@ function OrderModal({ ctx, order }) {
         {items.map((item,idx)=>(
           <div key={idx} style={{display:'flex',gap:8,marginBottom:8,alignItems:'center',flexWrap:'wrap'}}>
             <div style={{flexShrink:0,width:58,textAlign:'center',fontSize:10,fontWeight:700,padding:'4px 6px',borderRadius:8,
-              background:item.cat==='grande'?'#fff5f5':item.cat==='mini'?'#fffbeb':'#f5f0ff',
-              color:item.cat==='grande'?C.red:item.cat==='mini'?'#b45309':'#7e22ce',
-              border:`1px solid ${item.cat==='grande'?'#fca5a5':item.cat==='mini'?'#fde68a':'#d8b4fe'}`}}>
-              {item.cat==='grande'?'GRANDE':item.cat==='mini'?'MINI':'DOCE'}
+              background:item.cat==='grande'?'#fff5f5':item.cat==='mini'?'#fffbeb':item.cat==='doce'?'#f5f0ff':'#f0fdf4',
+              color:item.cat==='grande'?C.red:item.cat==='mini'?'#b45309':item.cat==='doce'?'#7e22ce':'#15803d',
+              border:`1px solid ${item.cat==='grande'?'#fca5a5':item.cat==='mini'?'#fde68a':item.cat==='doce'?'#d8b4fe':'#bbf7d0'}`}}>
+              {item.cat==='grande'?'TRADICIONAL':item.cat==='mini'?'MINI':item.cat==='doce'?'DOCE':'ANTEPASTO'}
             </div>
             <select className="input" style={{flex:'1 1 160px',padding:'10px 12px'}} value={item.productId} onChange={e=>updItem(idx,'productId',e.target.value)}>
-              <optgroup label="Pizzas Grandes (30cm)">
+              <optgroup label="Pizzas Tamanho Tradicional (30cm)">
                 {grandes.map(p=><option key={p.id} value={p.id}>{p.nome} – {fmtBRL(p.preco)}</option>)}
               </optgroup>
               <optgroup label="Mini Pizzas">
                 {minis.map(p=><option key={p.id} value={p.id}>{p.nome} – {fmtBRL(p.preco)}</option>)}
               </optgroup>
               {doces.length>0&&(
-                <optgroup label="Doces">
+                <optgroup label="Pizzas Tamanho Tradicional Doce (30cm)">
                   {doces.map(p=><option key={p.id} value={p.id}>{p.nome} – {fmtBRL(p.preco)}</option>)}
+                </optgroup>
+              )}
+              {antepastos.length>0&&(
+                <optgroup label="Antepastos">
+                  {antepastos.map(p=><option key={p.id} value={p.id}>{p.nome} – {fmtBRL(p.preco)}</option>)}
                 </optgroup>
               )}
             </select>
@@ -1872,9 +1892,10 @@ function OrderModal({ ctx, order }) {
         <div style={{fontSize:11,color:C.text2,marginTop:-4,marginBottom:12}}>Valor unitário editável — mude se este pedido tiver um preço diferente do padrão.</div>
 
         <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap'}}>
-          <button onClick={()=>addItem('grande')} style={{background:'#fff5f5',border:`1px solid #fca5a5`,borderRadius:10,padding:'9px 14px',fontSize:12,fontWeight:700,cursor:'pointer',color:C.red,fontFamily:'inherit'}}>+ Grande</button>
-          <button onClick={()=>addItem('mini')}   style={{background:'#fffbeb',border:`1px solid #fde68a`,borderRadius:10,padding:'9px 14px',fontSize:12,fontWeight:700,cursor:'pointer',color:'#b45309',fontFamily:'inherit'}}>+ Mini</button>
+          <button onClick={()=>addItem('grande')}    style={{background:'#fff5f5',border:`1px solid #fca5a5`,borderRadius:10,padding:'9px 14px',fontSize:12,fontWeight:700,cursor:'pointer',color:C.red,fontFamily:'inherit'}}>+ Tradicional</button>
+          <button onClick={()=>addItem('mini')}      style={{background:'#fffbeb',border:`1px solid #fde68a`,borderRadius:10,padding:'9px 14px',fontSize:12,fontWeight:700,cursor:'pointer',color:'#b45309',fontFamily:'inherit'}}>+ Mini</button>
           {doces.length>0&&<button onClick={()=>addItem('doce')} style={{background:'#f5f0ff',border:`1px solid #d8b4fe`,borderRadius:10,padding:'9px 14px',fontSize:12,fontWeight:700,cursor:'pointer',color:'#7e22ce',fontFamily:'inherit'}}>+ Doce</button>}
+          {antepastos.length>0&&<button onClick={()=>addItem('antepasto')} style={{background:'#f0fdf4',border:`1px solid #bbf7d0`,borderRadius:10,padding:'9px 14px',fontSize:12,fontWeight:700,cursor:'pointer',color:'#15803d',fontFamily:'inherit'}}>+ Antepasto</button>}
         </div>
 
         <label className="label">Frete</label>
@@ -1985,24 +2006,30 @@ function EventModal({ ctx, event }) {
               <div key={idx} style={{display:'flex',gap:6,alignItems:'center',marginBottom:8}}>
                 <select className="input" style={{flex:1,padding:'10px 8px'}} value={item.productId} onChange={e=>updItem(idx,'productId',e.target.value)}>
                   <option value="">Selecionar...</option>
-                  <optgroup label="Grandes">
+                  <optgroup label="Pizzas Tamanho Tradicional (30cm)">
                     {ctx.sabores.filter(p=>p.cat==='grande').map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}
                   </optgroup>
-                  <optgroup label="Mini">
+                  <optgroup label="Mini Pizzas">
                     {ctx.sabores.filter(p=>p.cat==='mini').map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}
                   </optgroup>
-                  <optgroup label="Doces">
+                  <optgroup label="Pizzas Tamanho Tradicional Doce (30cm)">
                     {ctx.sabores.filter(p=>p.cat==='doce').map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}
                   </optgroup>
+                  {ctx.sabores.filter(p=>p.cat==='antepasto').length>0&&(
+                    <optgroup label="Antepastos">
+                      {ctx.sabores.filter(p=>p.cat==='antepasto').map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}
+                    </optgroup>
+                  )}
                 </select>
                 <input className="input" type="number" min="1" style={{width:56,padding:'10px 8px',textAlign:'center'}} value={item.qty} onChange={e=>updItem(idx,'qty',e.target.value)}/>
                 {items.length>1&&<button onClick={()=>setItems(items.filter((_,i)=>i!==idx))} style={{background:'none',border:'none',cursor:'pointer',flexShrink:0}}>{I.x(C.red,20)}</button>}
               </div>
             ))}
-            <div style={{display:'flex',gap:8}}>
-              <button onClick={()=>addItem('grande')} style={{background:'#fff5f5',border:`1px solid #fca5a5`,borderRadius:10,padding:'8px 12px',fontSize:12,fontWeight:700,cursor:'pointer',color:C.red,fontFamily:'inherit'}}>+ Grande</button>
-              <button onClick={()=>addItem('mini')}   style={{background:'#fffbeb',border:`1px solid #fde68a`,borderRadius:10,padding:'8px 12px',fontSize:12,fontWeight:700,cursor:'pointer',color:'#b45309',fontFamily:'inherit'}}>+ Mini</button>
-              <button onClick={()=>addItem('doce')}   style={{background:'#f5f0ff',border:`1px solid #d8b4fe`,borderRadius:10,padding:'8px 12px',fontSize:12,fontWeight:700,cursor:'pointer',color:'#7e22ce',fontFamily:'inherit'}}>+ Doce</button>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+              <button onClick={()=>addItem('grande')}    style={{background:'#fff5f5',border:`1px solid #fca5a5`,borderRadius:10,padding:'8px 12px',fontSize:12,fontWeight:700,cursor:'pointer',color:C.red,fontFamily:'inherit'}}>+ Tradicional</button>
+              <button onClick={()=>addItem('mini')}      style={{background:'#fffbeb',border:`1px solid #fde68a`,borderRadius:10,padding:'8px 12px',fontSize:12,fontWeight:700,cursor:'pointer',color:'#b45309',fontFamily:'inherit'}}>+ Mini</button>
+              <button onClick={()=>addItem('doce')}      style={{background:'#f5f0ff',border:`1px solid #d8b4fe`,borderRadius:10,padding:'8px 12px',fontSize:12,fontWeight:700,cursor:'pointer',color:'#7e22ce',fontFamily:'inherit'}}>+ Doce</button>
+              {ctx.sabores.filter(p=>p.cat==='antepasto').length>0&&<button onClick={()=>addItem('antepasto')} style={{background:'#f0fdf4',border:`1px solid #bbf7d0`,borderRadius:10,padding:'8px 12px',fontSize:12,fontWeight:700,cursor:'pointer',color:'#15803d',fontFamily:'inherit'}}>+ Antepasto</button>}
             </div>
           </div>
         )}
@@ -2038,8 +2065,10 @@ function OrderDetail({ ctx, order }) {
   };
 
   const CatTag=({cat})=><span style={{fontSize:10,fontWeight:700,padding:'1px 7px',borderRadius:20,
-    background:cat==='grande'?'#fff5f5':cat==='mini'?'#fffbeb':'#f5f0ff',
-    color:cat==='grande'?C.red:cat==='mini'?'#b45309':'#7e22ce'}}>{cat==='grande'?'Grande':cat==='mini'?'Mini':'Doce'}</span>;
+    background:cat==='grande'?'#fff5f5':cat==='mini'?'#fffbeb':cat==='doce'?'#f5f0ff':'#f0fdf4',
+    color:cat==='grande'?C.red:cat==='mini'?'#b45309':cat==='doce'?'#7e22ce':'#15803d'}}>
+    {cat==='grande'?'Tradicional 30cm':cat==='mini'?'Mini':cat==='doce'?'Doce 30cm':'Antepasto'}
+  </span>;
 
   return (
     <div className="overlay" onClick={ctx.close}>
@@ -4309,9 +4338,10 @@ function Estoque({ ctx }) {
   const byVendas = (a, b) => (vendasPorNome[b.nome]||0) - (vendasPorNome[a.nome]||0);
   const buscaLower = buscaSabor.trim().toLowerCase();
   const filtrarBusca = p => !buscaLower || p.nome.toLowerCase().includes(buscaLower);
-  const grandes = ctx.sabores.filter(p=>p.cat==='grande').sort(byVendas).filter(filtrarBusca);
-  const minis   = ctx.sabores.filter(p=>p.cat==='mini').sort(byVendas).filter(filtrarBusca);
-  const doces   = ctx.sabores.filter(p=>p.cat==='doce').sort(byVendas).filter(filtrarBusca);
+  const grandes    = ctx.sabores.filter(p=>p.cat==='grande').sort(byVendas).filter(filtrarBusca);
+  const minis      = ctx.sabores.filter(p=>p.cat==='mini').sort(byVendas).filter(filtrarBusca);
+  const doces      = ctx.sabores.filter(p=>p.cat==='doce').sort(byVendas).filter(filtrarBusca);
+  const antepastos = ctx.sabores.filter(p=>p.cat==='antepasto').sort(byVendas).filter(filtrarBusca);
 
   const StockRow = ({p}) => {
     const qtd = ctx.estoqueData[p.nome];
@@ -4386,7 +4416,7 @@ function Estoque({ ctx }) {
           </div>
 
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-            <div className="section-label">Pizzas Grandes</div>
+            <div className="section-label">Pizzas Tamanho Tradicional (30cm)</div>
             <button onClick={()=>abrirNovoSabor('grande')}
               style={{display:'flex',alignItems:'center',gap:4,background:'transparent',border:`1px solid ${C.border}`,borderRadius:10,padding:'4px 10px',cursor:'pointer',fontSize:11,fontWeight:700,color:C.red,fontFamily:'inherit'}}>
               {I.plus(C.red,12)} Novo
@@ -4404,13 +4434,22 @@ function Estoque({ ctx }) {
           {minis.map(p=><StockRow key={p.id} p={p}/>)}
 
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:14,marginBottom:8}}>
-            <div className="section-label">Pizzas Doces</div>
+            <div className="section-label">Pizzas Tamanho Tradicional Doce (30cm)</div>
             <button onClick={()=>abrirNovoSabor('doce')}
               style={{display:'flex',alignItems:'center',gap:4,background:'transparent',border:`1px solid ${C.border}`,borderRadius:10,padding:'4px 10px',cursor:'pointer',fontSize:11,fontWeight:700,color:C.red,fontFamily:'inherit'}}>
               {I.plus(C.red,12)} Novo
             </button>
           </div>
           {doces.map(p=><StockRow key={p.id} p={p}/>)}
+
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:14,marginBottom:8}}>
+            <div className="section-label">Antepastos</div>
+            <button onClick={()=>abrirNovoSabor('antepasto')}
+              style={{display:'flex',alignItems:'center',gap:4,background:'transparent',border:`1px solid ${C.border}`,borderRadius:10,padding:'4px 10px',cursor:'pointer',fontSize:11,fontWeight:700,color:C.red,fontFamily:'inherit'}}>
+              {I.plus(C.red,12)} Novo
+            </button>
+          </div>
+          {antepastos.map(p=><StockRow key={p.id} p={p}/>)}
         </div>
       )}
 
@@ -4628,7 +4667,7 @@ function Estoque({ ctx }) {
 
             <label className="label">Categoria</label>
             <div style={{display:'flex',gap:6,marginBottom:12}}>
-              {[['grande','Grande'],['mini','Mini'],['doce','Doce']].map(([k,l])=>(
+              {[['grande','Tradicional (30cm)'],['mini','Mini'],['doce','Doce (30cm)'],['antepasto','Antepasto']].map(([k,l])=>(
                 <button key={k} className="chip" onClick={()=>setSfCat(k)}
                   style={{flex:1,justifyContent:'center',background:sfCat===k?C.red:'white',color:sfCat===k?'white':C.text2,
                     border:`1px solid ${sfCat===k?C.red:C.border}`,fontSize:12}}>
