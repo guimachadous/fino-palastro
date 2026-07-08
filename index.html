@@ -1782,7 +1782,14 @@ function OrderModal({ ctx, order }) {
   const [frete,   setFrete]   = useState(order?.frete ? String(order.frete) : '');
   const [showClienteSugg, setShowClienteSugg] = useState(false);
 
-  const subtotal=items.reduce((s,i)=>s+(i.qty*i.unitPrice),0);
+  const MINI_KIT_PRECO = 12;
+  const MINI_KIT_MIN   = 10;
+  const miniQtyTotal = items.filter(i=>i.cat==='mini').reduce((s,i)=>s+(i.qty||1),0);
+  const kitAtivo = miniQtyTotal >= MINI_KIT_MIN;
+  const subtotal = items.reduce((s,i)=>{
+    const p = (i.cat==='mini' && kitAtivo) ? MINI_KIT_PRECO : i.unitPrice;
+    return s + (i.qty * p);
+  }, 0);
   const freteVal=parseFloat(String(frete).replace(',','.'))||0;
   const total=subtotal+freteVal;
 
@@ -1903,10 +1910,21 @@ function OrderModal({ ctx, order }) {
           placeholder="0,00 (deixe vazio se não houver frete)"
           value={frete} onChange={e=>setFrete(e.target.value)} style={{marginBottom:16}}/>
 
+        {kitAtivo&&(
+          <div style={{background:'#fffbeb',borderRadius:12,padding:'10px 14px',marginBottom:12,border:'1px solid #fde68a',fontSize:13,color:'#b45309',fontWeight:600}}>
+            🎉 Kit aplicado: {miniQtyTotal} mini pizzas × {fmtBRL(MINI_KIT_PRECO)} cada
+          </div>
+        )}
+        {!kitAtivo&&miniQtyTotal>0&&(
+          <div style={{background:'#fafafa',borderRadius:12,padding:'10px 14px',marginBottom:12,border:'1px solid #e5e7eb',fontSize:12,color:C.text2}}>
+            Adicione mais <strong>{MINI_KIT_MIN-miniQtyTotal}</strong> mini pizza{MINI_KIT_MIN-miniQtyTotal>1?'s':''} para ativar o kit (R$ {MINI_KIT_PRECO},00 cada)
+          </div>
+        )}
+
         <div style={{background:'#f0fdf4',borderRadius:14,padding:'13px 16px',marginBottom:16,border:`1px solid #bbf7d0`}}>
-          {freteVal>0&&(
+          {(freteVal>0||kitAtivo)&&(
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-              <span style={{fontSize:13,color:C.text2}}>Pizzas</span>
+              <span style={{fontSize:13,color:C.text2}}>Pizzas{kitAtivo?' (c/ desconto kit)':''}</span>
               <span style={{fontSize:13,color:C.text2}}>{fmtBRL(subtotal)}</span>
             </div>
           )}
