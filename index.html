@@ -609,11 +609,13 @@ function App({ currentUserEmail, onLogout }) {
       const next = {...atual};
       itens.forEach(item => {
         const nome = item.productName||item.nome||'';
-        if (next[nome] !== undefined && next[nome] !== null) {
-          // Mesmo sem saldo suficiente, o pedido é contabilizado: o estoque
-          // pode ficar negativo, indicando o quanto falta repor para este cliente.
-          next[nome] = next[nome] - (item.qty||1);
-        }
+        if (!nome) return;
+        // Se o produto não tem entrada de estoque, inicializa em 0 e debita.
+        // Isso permite rastrear produtos recém-adicionados (ex: Rotolina) sem
+        // que o usuário precise configurar estoque inicial manualmente.
+        // O estoque pode ficar negativo, indicando o quanto falta produzir.
+        const qtdAtual = (next[nome] !== undefined && next[nome] !== null) ? next[nome] : 0;
+        next[nome] = qtdAtual - (item.qty||1);
       });
       return next;
     });
