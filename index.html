@@ -458,6 +458,32 @@ function App({ currentUserEmail, onLogout }) {
   useEffect(()=>{ if(initDone.current) db.set('fp_cats_in',      catsIn);       }, [catsIn]);
   useEffect(()=>{ if(initDone.current) db.set('fp_cats_out',     catsOut);      }, [catsOut]);
 
+  // ── AUTO-BACKUP DIÁRIO ─────────────────────────────────────────────────────
+  // Uma vez por dia, após a sincronização com a nuvem, salva um snapshot
+  // completo em fp_backups/{YYYY-MM-DD}. Mantém até 30 dias de histórico.
+  // Protege contra perda total de dados por site antigo, bug ou acidente.
+  const _autoBackupDone = React.useRef(false);
+  useEffect(()=>{
+    if(cloudStatus!=='ok'||_autoBackupDone.current) return;
+    _autoBackupDone.current=true;
+    const dateStr=new Date().toISOString().split('T')[0];
+    if(localStorage.getItem('fp_last_auto_backup')===dateStr) return;
+    try {
+      const snap={
+        fp_trans:trans, fp_orders:orders, fp_events:events, fp_products:products,
+        fp_contas:contas, fp_cats_pagar:catsPagar, fp_unidades:unidadesMedida,
+        fp_fornecedores:fornecedores, fp_clientes:clientes, fp_materias_primas:materiasPrimas,
+        fp_estoque:estoqueData, fp_estoque_hist:estoqueHist, fp_sabores:sabores,
+        fp_cats_receber:catsReceber, fp_cats_in:catsIn, fp_cats_out:catsOut,
+        fp_sheet_id:sheetId, fp_opening_bal:openBal,
+        _exportedAt:new Date().toISOString(), _version:2,
+      };
+      window.__fsdb.collection('fp_backups').doc(dateStr).set(snap)
+        .then(()=>localStorage.setItem('fp_last_auto_backup',dateStr))
+        .catch(()=>{});
+    } catch(e){}
+  },[cloudStatus]);
+
   const addTrans  = t => setTrans(p  => [{...t,  id:genId()}, ...p]);
   const addOrder  = o => {
     const nId = genId(); const ord = {...o, id:nId, createdAt:today()};
@@ -790,10 +816,15 @@ function App({ currentUserEmail, onLogout }) {
       initDone.current = true;
       res.forEach(({k,v,ts}) => {
         if (v===undefined) return;
+        // Proteção contra versões antigas do app (ou outros sites/abas desatualizados)
+        // sobrescreverem dados mais novos: compara o timestamp da nuvem com o timestamp
+        // local salvo na última escrita deste dispositivo. Se a nuvem for mais antiga, ignora.
+        const localTs = parseInt(localStorage.getItem(k+'__ts')||'0', 10);
+        if (localTs && ts && ts < localTs) return; // nuvem mais antiga — ignora
         // Para listas (KS), só aplica se a nuvem realmente trouxer um array —
         // um valor corrompido/inesperado não deve apagar os dados locais.
-        if (KS[k]) { if (Array.isArray(v)) { try { localStorage.setItem(k,JSON.stringify(v)); } catch {} KS[k](v); } return; }
-        try { localStorage.setItem(k,JSON.stringify(v)); } catch {}
+        if (KS[k]) { if (Array.isArray(v)) { try { localStorage.setItem(k,JSON.stringify(v)); localStorage.setItem(k+'__ts',String(ts)); } catch {} KS[k](v); } return; }
+        try { localStorage.setItem(k,JSON.stringify(v)); localStorage.setItem(k+'__ts',String(ts)); } catch {}
         if (CS[k]) CS[k](v, ts);
       });
       setCloudStatus('ok');
@@ -2888,20 +2919,57 @@ function ProductsModal({ ctx }) {
 // ── BACKUP SECTION ────────────────────────────────────────────────────────
 function BackupSection({ ctx }) {
   const [importMsg, setImportMsg] = React.useState(null);
+  const [backupHistory, setBackupHistory] = React.useState([]);
+  const [loadingHistory, setLoadingHistory] = React.useState(false);
+  const [confirmRestore, setConfirmRestore] = React.useState(null);
 
-  const KEYS = ['fp_trans','fp_orders','fp_events','fp_products','fp_contas','fp_sheet_id','fp_opening_bal','fp_last_sync'];
+  // Lista completa de todas as chaves de dados do sistema
+  const ALL_KEYS = [
+    'fp_trans','fp_orders','fp_events','fp_products','fp_contas',
+    'fp_cats_pagar','fp_unidades','fp_fornecedores','fp_clientes','fp_materias_primas',
+    'fp_estoque','fp_estoque_hist','fp_sabores','fp_cats_receber','fp_cats_in','fp_cats_out',
+    'fp_sheet_id','fp_opening_bal',
+  ];
+
+  const lastAutoBackup = localStorage.getItem('fp_last_auto_backup');
+  const lastAutoBackupFmt = lastAutoBackup
+    ? new Date(lastAutoBackup+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'})
+    : null;
 
   const exportBackup = () => {
     const data = {};
-    KEYS.forEach(k => { const v = localStorage.getItem(k); if (v) data[k] = JSON.parse(v); });
+    ALL_KEYS.forEach(k => { const v = localStorage.getItem(k); if (v) { try { data[k] = JSON.parse(v); } catch {} } });
     data._exportedAt = new Date().toISOString();
-    data._version = 1;
+    data._version = 2;
     const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     const date = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
     a.href = url; a.download = `fino-palastro-backup-${date}.json`; a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const restoreData = (data) => {
+    const promises = [];
+    let count = 0;
+    const ts = Date.now();
+    ALL_KEYS.forEach(k => {
+      if (data[k] !== undefined) {
+        try { localStorage.setItem(k, JSON.stringify(data[k])); localStorage.setItem(k+'__ts', String(ts)); } catch {}
+        try {
+          const p = window.__fsdb.collection('fp_data').doc(k).set({data: data[k], ts});
+          promises.push(p);
+        } catch {}
+        count++;
+      }
+    });
+    setImportMsg({ok:true, msg:`Restaurando ${count} seções e sincronizando com a nuvem...`});
+    Promise.all(promises)
+      .then(() => {
+        setImportMsg({ok:true, msg:`✓ Backup restaurado! Recarregando...`});
+        setTimeout(() => window.location.reload(), 1500);
+      })
+      .catch(() => setTimeout(() => window.location.reload(), 1500));
   };
 
   const importBackup = (e) => {
@@ -2912,27 +2980,9 @@ function BackupSection({ ctx }) {
       try {
         const data = JSON.parse(ev.target.result);
         if (!data._version) throw new Error('Arquivo inválido');
-        let count = 0;
-        const promises = [];
-        KEYS.forEach(k => {
-          if (data[k] !== undefined) {
-            try { localStorage.setItem(k, JSON.stringify(data[k])); } catch {}
-            try {
-              const p = window.__fsdb.collection('fp_data').doc(k).set({data: data[k], ts: Date.now()});
-              promises.push(p);
-            } catch {}
-            count++;
-          }
-        });
-        setImportMsg({ok:true, msg:`Restaurando ${count} seções e sincronizando com a nuvem...`});
-        Promise.all(promises)
-          .then(() => {
-            setImportMsg({ok:true, msg:`✓ Backup restaurado e sincronizado! Recarregando...`});
-            setTimeout(() => window.location.reload(), 1500);
-          })
-          .catch(() => setTimeout(() => window.location.reload(), 1500));
+        restoreData(data);
       } catch(err) {
-        setImportMsg({ok:false, msg:'Arquivo inválido ou corrompido. Verifique se é um backup do Fino Palastro.'});
+        setImportMsg({ok:false, msg:'Arquivo inválido ou corrompido.'});
       }
     };
     reader.readAsText(file);
@@ -2941,12 +2991,13 @@ function BackupSection({ ctx }) {
 
   const forceSyncToCloud = () => {
     setImportMsg({ok:true, msg:'Sincronizando todos os dados com a nuvem...'});
-    const promises = KEYS.map(k => {
+    const ts = Date.now();
+    const promises = ALL_KEYS.map(k => {
       const raw = localStorage.getItem(k);
       if (!raw) return Promise.resolve();
       try {
         const v = JSON.parse(raw);
-        return window.__fsdb.collection('fp_data').doc(k).set({data: v, ts: Date.now()}).catch(()=>{});
+        return window.__fsdb.collection('fp_data').doc(k).set({data: v, ts}).catch(()=>{});
       } catch { return Promise.resolve(); }
     });
     Promise.all(promises).then(() => {
@@ -2955,23 +3006,53 @@ function BackupSection({ ctx }) {
     }).catch(() => setImportMsg({ok:false, msg:'Erro ao sincronizar. Verifique sua conexão.'}));
   };
 
+  const loadHistory = () => {
+    setLoadingHistory(true);
+    try {
+      window.__fsdb.collection('fp_backups').orderBy('_exportedAt','desc').limit(14).get()
+        .then(snap => {
+          const items = snap.docs.map(d => ({id: d.id, data: d.data(), ...d.data()}));
+          setBackupHistory(items);
+          setLoadingHistory(false);
+        })
+        .catch(() => {
+          // orderBy pode falhar sem índice, tenta sem ordenar
+          window.__fsdb.collection('fp_backups').limit(14).get()
+            .then(snap => {
+              const items = snap.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b)=>b.id.localeCompare(a.id));
+              setBackupHistory(items);
+              setLoadingHistory(false);
+            })
+            .catch(() => setLoadingHistory(false));
+        });
+    } catch { setLoadingHistory(false); }
+  };
+
+  React.useEffect(() => { loadHistory(); }, []);
+
   const totalEntries = (ctx.trans?.length||0)+(ctx.orders?.length||0)+(ctx.events?.length||0)+(ctx.contas?.length||0);
 
   return (
     <div>
       <div style={{fontWeight:800,fontSize:15,marginBottom:4}}>&#128230; Backup dos Dados</div>
-      <div style={{fontSize:12,color:C.text2,marginBottom:16,lineHeight:1.6}}>
-        Salve todos os dados do sistema em um arquivo JSON.<br/>
-        Use para transferir para outro computador ou como segurança.
-      </div>
-      <div style={{background:'#f0fdf4',borderRadius:12,padding:'10px 14px',marginBottom:14,border:'1px solid #bbf7d0',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-        <span style={{fontSize:12,color:C.green,fontWeight:700}}>Total de registros</span>
-        <span style={{fontSize:15,fontWeight:900,color:C.green}}>{totalEntries}</span>
+
+      {/* Status do auto-backup */}
+      <div style={{background: lastAutoBackup ? '#f0fdf4' : '#fff7ed', borderRadius:12, padding:'10px 14px', marginBottom:12,
+        border:`1px solid ${lastAutoBackup ? '#bbf7d0' : '#fed7aa'}`, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+        <div>
+          <div style={{fontSize:11,fontWeight:700,color: lastAutoBackup ? C.green : '#92400e', textTransform:'uppercase', letterSpacing:'0.5px'}}>
+            {lastAutoBackup ? '✓ Backup automático ativo' : '⚠ Sem backup automático ainda'}
+          </div>
+          <div style={{fontSize:12,color:C.text2,marginTop:2}}>
+            {lastAutoBackup ? `Último: ${lastAutoBackupFmt}` : 'Será gerado ao usar o sistema'}
+          </div>
+        </div>
+        <span style={{fontSize:13,fontWeight:900,color: lastAutoBackup ? C.green : '#92400e'}}>{totalEntries} registros</span>
       </div>
 
       <button onClick={exportBackup}
         style={{width:'100%',background:`linear-gradient(135deg,${C.green},#1e5c3a)`,border:'none',borderRadius:14,padding:15,color:'white',fontWeight:800,cursor:'pointer',fontSize:15,fontFamily:'inherit',marginBottom:10,display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
-        &#11015; Exportar Backup (.json)
+        &#11015; Exportar Backup Manual (.json)
       </button>
 
       <label style={{display:'block',width:'100%',background:'linear-gradient(135deg,#1d4ed8,#1e40af)',borderRadius:14,padding:15,color:'white',fontWeight:800,cursor:'pointer',fontSize:15,textAlign:'center',marginBottom:10}}>
@@ -2980,9 +3061,64 @@ function BackupSection({ ctx }) {
       </label>
 
       <button onClick={forceSyncToCloud}
-        style={{width:'100%',background:'linear-gradient(135deg,#7c3aed,#5b21b6)',border:'none',borderRadius:14,padding:15,color:'white',fontWeight:800,cursor:'pointer',fontSize:15,fontFamily:'inherit',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+        style={{width:'100%',background:'linear-gradient(135deg,#7c3aed,#5b21b6)',border:'none',borderRadius:14,padding:15,color:'white',fontWeight:800,cursor:'pointer',fontSize:15,fontFamily:'inherit',display:'flex',alignItems:'center',justifyContent:'center',gap:8,marginBottom:16}}>
         &#9729; Forçar Sync com Nuvem
       </button>
+
+      {/* Histórico de backups automáticos */}
+      <div style={{fontWeight:800,fontSize:14,marginBottom:8,color:C.text}}>&#128337; Histórico de backups automáticos</div>
+      {loadingHistory ? (
+        <div style={{textAlign:'center',color:C.text2,fontSize:13,padding:'12px 0'}}>Carregando...</div>
+      ) : backupHistory.length === 0 ? (
+        <div style={{background:'#fff7ed',borderRadius:12,padding:'12px 14px',fontSize:12,color:'#92400e',border:'1px solid #fed7aa'}}>
+          Nenhum backup automático encontrado. O primeiro será gerado hoje ao usar o sistema.
+        </div>
+      ) : (
+        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+          {backupHistory.map(b => {
+            const dateFormatted = b.id
+              ? new Date(b.id+'T00:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',year:'numeric'})
+              : b.id;
+            const isToday = b.id === new Date().toISOString().split('T')[0];
+            return (
+              <div key={b.id} style={{background:'#faf7f3',borderRadius:12,padding:'10px 14px',border:'1px solid #e0d5c8',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <div>
+                  <div style={{fontSize:13,fontWeight:700,color:C.text}}>{dateFormatted} {isToday && <span style={{background:C.green,color:'white',fontSize:10,borderRadius:6,padding:'1px 6px',marginLeft:4}}>hoje</span>}</div>
+                  <div style={{fontSize:11,color:C.text2,marginTop:1}}>
+                    {(b.fp_trans?.length||0)+(b.fp_orders?.length||0)+(b.fp_contas?.length||0)} registros principais
+                  </div>
+                </div>
+                <button onClick={()=>setConfirmRestore(b)}
+                  style={{background:'#1d4ed8',color:'white',border:'none',borderRadius:10,padding:'6px 12px',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
+                  Restaurar
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Confirmação de restaurar */}
+      {confirmRestore && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:2000,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+          <div style={{background:'white',borderRadius:20,padding:24,maxWidth:340,width:'100%'}}>
+            <div style={{fontWeight:800,fontSize:16,marginBottom:8}}>Restaurar backup?</div>
+            <div style={{fontSize:13,color:C.text2,marginBottom:20,lineHeight:1.5}}>
+              Isso vai substituir <strong>todos os dados atuais</strong> pelo backup de <strong>{confirmRestore.id}</strong>. Esta ação não pode ser desfeita.
+            </div>
+            <div style={{display:'flex',gap:10}}>
+              <button onClick={()=>setConfirmRestore(null)}
+                style={{flex:1,background:'#f0ebe4',border:'none',borderRadius:12,padding:12,fontSize:14,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
+                Cancelar
+              </button>
+              <button onClick={()=>{ setConfirmRestore(null); restoreData(confirmRestore); }}
+                style={{flex:1,background:C.red,color:'white',border:'none',borderRadius:12,padding:12,fontSize:14,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
+                Restaurar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {importMsg && (
         <div style={{marginTop:12,padding:'12px 14px',borderRadius:12,
