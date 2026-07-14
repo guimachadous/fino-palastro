@@ -2160,6 +2160,11 @@ function EventModal({ ctx, event }) {
                       {ctx.sabores.filter(p=>p.cat==='antepasto').map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}
                     </optgroup>
                   )}
+                  {ctx.sabores.filter(p=>p.cat==='evento').length>0&&(
+                    <optgroup label="Pizzas para Eventos">
+                      {ctx.sabores.filter(p=>p.cat==='evento').map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}
+                    </optgroup>
+                  )}
                 </select>
                 <input className="input" type="number" min="1" style={{width:56,padding:'10px 8px',textAlign:'center'}} value={item.qty} onChange={e=>updItem(idx,'qty',e.target.value)}/>
                 {items.length>1&&<button onClick={()=>setItems(items.filter((_,i)=>i!==idx))} style={{background:'none',border:'none',cursor:'pointer',flexShrink:0}}>{I.x(C.red,20)}</button>}
@@ -2170,6 +2175,7 @@ function EventModal({ ctx, event }) {
               <button onClick={()=>addItem('mini')}      style={{background:'#fffbeb',border:`1px solid #fde68a`,borderRadius:10,padding:'8px 12px',fontSize:12,fontWeight:700,cursor:'pointer',color:'#b45309',fontFamily:'inherit'}}>+ Mini</button>
               <button onClick={()=>addItem('doce')}      style={{background:'#f5f0ff',border:`1px solid #d8b4fe`,borderRadius:10,padding:'8px 12px',fontSize:12,fontWeight:700,cursor:'pointer',color:'#7e22ce',fontFamily:'inherit'}}>+ Doce</button>
               {ctx.sabores.filter(p=>p.cat==='antepasto').length>0&&<button onClick={()=>addItem('antepasto')} style={{background:'#f0fdf4',border:`1px solid #bbf7d0`,borderRadius:10,padding:'8px 12px',fontSize:12,fontWeight:700,cursor:'pointer',color:'#15803d',fontFamily:'inherit'}}>+ Antepasto</button>}
+              {ctx.sabores.filter(p=>p.cat==='evento').length>0&&<button onClick={()=>addItem('evento')} style={{background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:10,padding:'8px 12px',fontSize:12,fontWeight:700,cursor:'pointer',color:'#1d4ed8',fontFamily:'inherit'}}>+ Evento</button>}
             </div>
           </div>
         )}
@@ -4524,6 +4530,13 @@ function Estoque({ ctx }) {
   const abrirNovoSabor = (cat) => { setSaborForm({}); setSfNome(''); setSfCat(cat); setSfPreco(''); setSfDesc(''); setSfReceita([]); };
   const abrirEditarSabor = (s) => { setSaborForm(s); setSfNome(s.nome); setSfCat(s.cat); setSfPreco(String(s.preco||'')); setSfDesc(s.desc||''); setSfReceita(s.receita||[]); };
   const abrirCopiarSabor = (s) => { setSaborForm({}); setSfNome(s.nome); setSfCat(s.cat); setSfPreco(String(s.preco||'')); setSfDesc(s.desc||''); setSfReceita((s.receita||[]).map(it=>({...it}))); };
+  const importarParaEventos = () => {
+    const jaExistem = new Set(ctx.sabores.filter(p=>p.cat==='evento').map(p=>p.nome));
+    const pImportar = ctx.sabores.filter(p=>['grande','mini','doce'].includes(p.cat) && !jaExistem.has(p.nome));
+    if (!pImportar.length) { alert('Todos os sabores já foram importados para Eventos.'); return; }
+    if (!window.confirm(`Importar ${pImportar.length} sabores para "Pizzas para Eventos"?`)) return;
+    pImportar.forEach(p => ctx.addSabor({nome:p.nome, cat:'evento', preco:p.preco, desc:p.desc||'', receita:(p.receita||[]).map(it=>({...it}))}));
+  };
   const addItemReceita = () => setSfReceita(p=>[...p,{materiaPrimaId:'',quantidade:'',unidade:''}]);
   const updItemReceita = (idx,k,v) => setSfReceita(p=>p.map((it,i)=>{
     if (i!==idx) return it;
@@ -4601,6 +4614,7 @@ function Estoque({ ctx }) {
   const minis      = ctx.sabores.filter(p=>p.cat==='mini').sort(byVendas).filter(filtrarBusca);
   const doces      = ctx.sabores.filter(p=>p.cat==='doce').sort(byVendas).filter(filtrarBusca);
   const antepastos = ctx.sabores.filter(p=>p.cat==='antepasto').sort(byVendas).filter(filtrarBusca);
+  const eventos    = ctx.sabores.filter(p=>p.cat==='evento').sort(byVendas).filter(filtrarBusca);
 
   const StockRow = ({p}) => {
     const qtd = ctx.estoqueData[p.nome];
@@ -4621,7 +4635,7 @@ function Estoque({ ctx }) {
             {(vendasPorNome[p.nome]||0)>0&&<span style={{fontSize:10,color:'#888',background:'#f5f0e8',padding:'1px 7px',borderRadius:10,fontWeight:600}}>{vendasPorNome[p.nome]===1?'1 venda':`${vendasPorNome[p.nome]} vendas`}</span>}
             {temReceita&&<span className="badge" style={{background:'#fff7ed',color:'#b45309',fontSize:10,fontWeight:700}}>CMV {fmtBRL(cmv)} ({p.preco?Math.round(cmv/p.preco*100):0}%)</span>}
           </div>
-          {zerado&&<div style={{fontSize:11,color:C.red,marginTop:2}}>⚠️ Sem estoque — bloqueado no cardápio</div>}
+          {zerado&&<div style={{fontSize:11,color:C.red,marginTop:2}}>{p.cat==='evento'?'⚠️ Sem estoque para eventos':'⚠️ Sem estoque — bloqueado no cardápio'}</div>}
           {negativo&&<div style={{fontSize:11,color:C.red,marginTop:2}}>⚠️ Estoque negativo — faltam {Math.abs(qtd)} un. para repor</div>}
           {semControle&&<div style={{fontSize:11,color:C.text2,marginTop:2}}>Sem controle definido</div>}
         </div>
@@ -4709,6 +4723,25 @@ function Estoque({ ctx }) {
             </button>
           </div>
           {antepastos.map(p=><StockRow key={p.id} p={p}/>)}
+
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:18,marginBottom:8}}>
+            <div style={{display:'flex',alignItems:'center',gap:6}}>
+              <div className="section-label">Pizzas para Eventos</div>
+              <span style={{fontSize:10,fontWeight:700,background:'#eff6ff',color:'#1d4ed8',border:'1px solid #bfdbfe',borderRadius:20,padding:'1px 8px'}}>Não aparece no cardápio</span>
+            </div>
+            <div style={{display:'flex',gap:6}}>
+              {eventos.length===0&&<button onClick={importarParaEventos}
+                style={{background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:10,padding:'4px 10px',cursor:'pointer',fontSize:11,fontWeight:700,color:'#1d4ed8',fontFamily:'inherit'}}>
+                ⬇ Importar
+              </button>}
+              <button onClick={()=>abrirNovoSabor('evento')}
+                style={{display:'flex',alignItems:'center',gap:4,background:'transparent',border:`1px solid ${C.border}`,borderRadius:10,padding:'4px 10px',cursor:'pointer',fontSize:11,fontWeight:700,color:C.red,fontFamily:'inherit'}}>
+                {I.plus(C.red,12)} Novo
+              </button>
+            </div>
+          </div>
+          {eventos.length===0&&<div style={{textAlign:'center',color:C.text2,fontSize:13,padding:'14px 0',fontStyle:'italic'}}>Nenhum item cadastrado. Clique em "⬇ Importar" para copiar os sabores existentes.</div>}
+          {eventos.map(p=><StockRow key={p.id} p={p}/>)}
         </div>
       )}
 
@@ -4926,7 +4959,7 @@ function Estoque({ ctx }) {
 
             <label className="label">Categoria</label>
             <div style={{display:'flex',gap:6,marginBottom:12}}>
-              {[['grande','Tradicional (30cm)'],['mini','Mini'],['doce','Doce (30cm)'],['antepasto','Antepasto']].map(([k,l])=>(
+              {[['grande','Tradicional (30cm)'],['mini','Mini'],['doce','Doce (30cm)'],['antepasto','Antepasto'],['evento','Para Eventos']].map(([k,l])=>(
                 <button key={k} className="chip" onClick={()=>setSfCat(k)}
                   style={{flex:1,justifyContent:'center',background:sfCat===k?C.red:'white',color:sfCat===k?'white':C.text2,
                     border:`1px solid ${sfCat===k?C.red:C.border}`,fontSize:12}}>
