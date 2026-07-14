@@ -2717,6 +2717,10 @@ function Lucros({ ctx }) {
 
 // ── RELATÓRIOS VIEW ────────────────────────────────────────────────────────
 function RelatoriosView({ ctx }) {
+  const [relDe,  setRelDe]  = useState('');
+  const [relAte, setRelAte] = useState('');
+  const [relAba, setRelAba] = useState('sabores');
+
   const allIn  = ctx.trans.filter(t=>t.type==='entrada').reduce((s,t)=>s+t.amount,0);
   const allOut = ctx.trans.filter(t=>t.type==='saida'  ).reduce((s,t)=>s+t.amount,0);
   const totalCaixa = ctx.openBal + allIn - allOut;
@@ -2753,6 +2757,56 @@ function RelatoriosView({ ctx }) {
   activeOrds.forEach(o=>{ if(o.items) o.items.forEach(i=>{ prodCnt[i.productName]=(prodCnt[i.productName]||0)+i.qty; }); });
   const topProds = Object.entries(prodCnt).sort((a,b)=>b[1]-a[1]).slice(0,5);
 
+  // ── Análise por período ──────────────────────────────────────────────────
+  const inRange = d => {
+    const s = (d||'').slice(0,10);
+    if (relDe && s < relDe) return false;
+    if (relAte && s > relAte) return false;
+    return true;
+  };
+  const vendasPeriodo = (() => {
+    const tot = {};
+    ctx.orders.filter(o=>o.status!=='cancelled'&&o.status!=='cancelado'&&inRange(o.createdAt))
+      .forEach(o=>(o.items||[]).forEach(i=>{
+        const n=i.productName||i.nome||''; if(!n)return;
+        if(!tot[n])tot[n]={qty:0};
+        tot[n].qty+=(i.qty||1);
+      }));
+    ctx.events.filter(e=>e.type==='express'&&e.status!=='cancelado'&&inRange(e.eventDate||e.createdAt))
+      .forEach(e=>(e.items||[]).forEach(i=>{
+        const n=i.productName||i.nome||''; if(!n)return;
+        if(!tot[n])tot[n]={qty:0};
+        tot[n].qty+=(i.qty||1);
+      }));
+    return Object.entries(tot).sort((a,b)=>b[1].qty-a[1].qty);
+  })();
+  const consumoMP = (() => {
+    const cons = {};
+    vendasPeriodo.forEach(([nome,{qty}])=>{
+      const sabor = ctx.sabores.find(s=>s.nome.toLowerCase()===nome.toLowerCase());
+      if (!sabor||!sabor.receita) return;
+      sabor.receita.forEach(it=>{
+        const mp = ctx.materiasPrimas.find(m=>m.id===it.materiaPrimaId);
+        if (!mp) return;
+        if (!cons[mp.id]) cons[mp.id]={nome:mp.nome, unidade:it.unidade||mp.unidadePadrao||'', total:0};
+        cons[mp.id].total += (it.quantidade||0)*qty;
+      });
+    });
+    return Object.values(cons).sort((a,b)=>a.nome.localeCompare(b.nome,'pt'));
+  })();
+  const comprasPeriodo = (() => {
+    const lista = [];
+    ctx.contas.filter(c=>c.tipo==='pagar'&&inRange(c.vencimento||c.criadoEm)).forEach(c=>{
+      if (Array.isArray(c.itens)&&c.itens.length) {
+        c.itens.forEach(it=>{ if(it&&it.quantidade>0) lista.push({data:c.vencimento||c.criadoEm||'',fornecedor:c.cliente||'',nome:it.nome||'',quantidade:it.quantidade,unidade:it.unidade||'',valor:it.valor||0}); });
+      } else if (c.descricao&&c.quantidade>0) {
+        lista.push({data:c.vencimento||c.criadoEm||'',fornecedor:c.cliente||'',nome:c.descricao||'',quantidade:c.quantidade,unidade:c.unidade||'',valor:c.valor||0});
+      }
+    });
+    return lista.sort((a,b)=>b.data>a.data?-1:1);
+  })();
+  // ─────────────────────────────────────────────────────────────────────────
+
   const KPI = ({lbl,val,sub,c}) => (
     <div className="card" style={{padding:'13px 12px',textAlign:'center'}}>
       <div style={{fontSize:9,color:C.text2,fontWeight:700,letterSpacing:'0.5px',marginBottom:4,textTransform:'uppercase'}}>{lbl}</div>
@@ -2771,6 +2825,94 @@ function RelatoriosView({ ctx }) {
 
   return (
     <div>
+      {/* ── Análise por Período ── */}
+      <div className="card" style={{marginBottom:14}}>
+        <div className="section-label" style={{marginBottom:12}}>Análise por Período</div>
+        <div style={{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap',alignItems:'flex-end'}}>
+          <div style={{display:'flex',flexDirection:'column',flex:1,minWidth:120}}>
+            <label style={{fontSize:10,color:C.text2,fontWeight:700,marginBottom:3}}>DE</label>
+            <input type="date" className="input" style={{padding:'8px 10px',fontSize:12}} value={relDe} onChange={e=>setRelDe(e.target.value)}/>
+          </div>
+          <div style={{display:'flex',flexDirection:'column',flex:1,minWidth:120}}>
+            <label style={{fontSize:10,color:C.text2,fontWeight:700,marginBottom:3}}>ATÉ</label>
+            <input type="date" className="input" style={{padding:'8px 10px',fontSize:12}} value={relAte} onChange={e=>setRelAte(e.target.value)}/>
+          </div>
+          {(relDe||relAte)&&<button onClick={()=>{setRelDe('');setRelAte('');}}
+            style={{background:'#f5f0e8',border:`1px solid ${C.border}`,borderRadius:10,padding:'8px 12px',cursor:'pointer',fontSize:11,fontWeight:700,color:C.text2,fontFamily:'inherit'}}>
+            ✕ Limpar
+          </button>}
+        </div>
+        <div style={{display:'flex',borderBottom:`1px solid ${C.border}`,marginBottom:12}}>
+          {[['sabores','🍕 Vendas'],['mp','🥣 Consumo MP'],['compras','🛒 Compras MP']].map(([k,l])=>(
+            <button key={k} onClick={()=>setRelAba(k)}
+              style={{flex:1,padding:'8px 4px',border:'none',background:'none',cursor:'pointer',fontSize:11,fontWeight:700,
+                color:relAba===k?C.red:C.text2,borderBottom:`2px solid ${relAba===k?C.red:'transparent'}`,
+                fontFamily:'inherit'}}>
+              {l}
+            </button>
+          ))}
+        </div>
+
+        {relAba==='sabores'&&(vendasPeriodo.length===0
+          ? <div style={{textAlign:'center',color:C.text2,fontSize:13,padding:'16px 0',fontStyle:'italic'}}>Nenhuma venda{(relDe||relAte)?' no período':' registrada'}</div>
+          : <>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:10,color:C.text2,fontWeight:700,padding:'0 0 6px',borderBottom:`1px solid ${C.border}`,marginBottom:4}}>
+                <span>SABOR</span><span>QTD</span>
+              </div>
+              {vendasPeriodo.map(([nome,{qty}],i)=>(
+                <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',borderBottom:i<vendasPeriodo.length-1?`1px solid ${C.border}`:'none'}}>
+                  <span style={{fontSize:13,fontWeight:600}}>{nome}</span>
+                  <span style={{fontSize:14,fontWeight:900,color:C.red}}>{qty}x</span>
+                </div>
+              ))}
+              <div style={{marginTop:10,fontSize:12,fontWeight:700,color:C.text2,textAlign:'right'}}>
+                Total: {vendasPeriodo.reduce((s,[,{qty}])=>s+qty,0)} pizzas
+              </div>
+            </>
+        )}
+
+        {relAba==='mp'&&(consumoMP.length===0
+          ? <div style={{textAlign:'center',color:C.text2,fontSize:13,padding:'16px 0',fontStyle:'italic'}}>
+              {vendasPeriodo.length===0?'Sem vendas no período':'Nenhum receituário cadastrado nos sabores vendidos'}
+            </div>
+          : <>
+              <div style={{fontSize:11,color:C.text2,marginBottom:8,fontStyle:'italic'}}>Estimativa baseada nos receituários e nas vendas do período.</div>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:10,color:C.text2,fontWeight:700,padding:'0 0 6px',borderBottom:`1px solid ${C.border}`,marginBottom:4}}>
+                <span>MATÉRIA-PRIMA</span><span>CONSUMO</span>
+              </div>
+              {consumoMP.map((mp,i)=>(
+                <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',borderBottom:i<consumoMP.length-1?`1px solid ${C.border}`:'none'}}>
+                  <span style={{fontSize:13,fontWeight:600}}>{mp.nome}</span>
+                  <span style={{fontSize:13,fontWeight:800,color:'#b45309'}}>{mp.total%1===0?mp.total:mp.total.toFixed(2)} {mp.unidade}</span>
+                </div>
+              ))}
+            </>
+        )}
+
+        {relAba==='compras'&&(comprasPeriodo.length===0
+          ? <div style={{textAlign:'center',color:C.text2,fontSize:13,padding:'16px 0',fontStyle:'italic'}}>Nenhuma compra{(relDe||relAte)?' no período':' registrada'}</div>
+          : <>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:10,color:C.text2,fontWeight:700,padding:'0 0 6px',borderBottom:`1px solid ${C.border}`,marginBottom:4}}>
+                <span>MATÉRIA-PRIMA</span><span>VALOR</span>
+              </div>
+              {comprasPeriodo.map((c,i)=>(
+                <div key={i} style={{padding:'8px 0',borderBottom:i<comprasPeriodo.length-1?`1px solid ${C.border}`:'none'}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+                    <span style={{fontSize:13,fontWeight:700}}>{c.nome}</span>
+                    <span style={{fontSize:13,fontWeight:900,color:C.red}}>{fmtBRL(c.valor)}</span>
+                  </div>
+                  <div style={{fontSize:11,color:C.text2,marginTop:2}}>
+                    {c.quantidade} {c.unidade}{c.fornecedor?` · ${c.fornecedor}`:''} · {fmtDate(c.data)}
+                  </div>
+                </div>
+              ))}
+              <div style={{marginTop:10,fontSize:12,fontWeight:700,color:C.text2,textAlign:'right'}}>
+                Total comprado: {fmtBRL(comprasPeriodo.reduce((s,c)=>s+c.valor,0))}
+              </div>
+            </>
+        )}
+      </div>
+
       <div style={{background:`linear-gradient(135deg,${C.red},${C.red2})`,borderRadius:18,padding:'16px 18px',marginBottom:14,color:'white'}}>
         <div style={{fontSize:10,opacity:0.7,fontWeight:700,letterSpacing:'0.6px',marginBottom:4}}>SALDO TOTAL EM CAIXA</div>
         <div style={{fontSize:32,fontWeight:900,letterSpacing:'-1px',marginBottom:6}}>{fmtBRL(totalCaixa)}</div>
