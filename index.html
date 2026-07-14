@@ -357,6 +357,7 @@ const I = {
   arrowdn: (c,s=16)=><svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>,
   bell:    (c,s=22)=><svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>,
   box:     (c,s=22)=><svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>,
+  chart:   (c,s=22)=><svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>,
   truck:   (c,s=22)=><svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>,
 };
 
@@ -951,8 +952,9 @@ function App({ currentUserEmail, onLogout }) {
     {id:'events',      lbl:'Eventos',  icon:I.cal},
     {id:'contas',      lbl:'Contas',   icon:I.bill},
     {id:'estoque',     lbl:'Estoque',  icon:I.box},
-    {id:'profits',     lbl:'Lucros',   icon:I.coin},
-    {id:'whatsapp',    lbl:'WhatsApp', icon:I.wa},
+    {id:'profits',     lbl:'Lucros',     icon:I.coin},
+    {id:'relatorios',  lbl:'Relatórios', icon:I.chart},
+    {id:'whatsapp',    lbl:'WhatsApp',   icon:I.wa},
   ];
 
   const headerAction = () => {
@@ -1043,8 +1045,9 @@ function App({ currentUserEmail, onLogout }) {
         {tab==='events'      && <Events      ctx={ctx}/>}
         {tab==='profits'     && <Lucros      ctx={ctx}/>}
         {tab==='contas'      && <Contas      ctx={ctx}/>}
-        {tab==='estoque'     && <Estoque     ctx={ctx}/>}
-        {tab==='whatsapp'    && <WhatsApp    ctx={ctx}/>}
+        {tab==='estoque'     && <Estoque       ctx={ctx}/>}
+        {tab==='relatorios'  && <RelatoriosView ctx={ctx}/>}
+        {tab==='whatsapp'    && <WhatsApp     ctx={ctx}/>}
       </div>
 
       </div>{/* fim main content */}
