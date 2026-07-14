@@ -4525,7 +4525,8 @@ function Estoque({ ctx }) {
   const [sfPreco,setSfPreco]= useState('');
   const [sfDesc, setSfDesc] = useState('');
   const [sfReceita, setSfReceita] = useState([]); // [{materiaPrimaId, quantidade, unidade}]
-  const [buscaSabor, setBuscaSabor] = useState('');
+  const [buscaSabor,  setBuscaSabor]  = useState('');
+  const [buscaEvento, setBuscaEvento] = useState('');
 
   const abrirNovoSabor = (cat) => { setSaborForm({}); setSfNome(''); setSfCat(cat); setSfPreco(''); setSfDesc(''); setSfReceita([]); };
   const abrirEditarSabor = (s) => { setSaborForm(s); setSfNome(s.nome); setSfCat(s.cat); setSfPreco(String(s.preco||'')); setSfDesc(s.desc||''); setSfReceita(s.receita||[]); };
@@ -4614,7 +4615,7 @@ function Estoque({ ctx }) {
   const minis      = ctx.sabores.filter(p=>p.cat==='mini').sort(byVendas).filter(filtrarBusca);
   const doces      = ctx.sabores.filter(p=>p.cat==='doce').sort(byVendas).filter(filtrarBusca);
   const antepastos = ctx.sabores.filter(p=>p.cat==='antepasto').sort(byVendas).filter(filtrarBusca);
-  const eventos    = ctx.sabores.filter(p=>p.cat==='evento').sort(byVendas).filter(filtrarBusca);
+  const eventos    = ctx.sabores.filter(p=>p.cat==='evento').sort(byVendas).filter(p=>!buscaEvento.trim()||p.nome.toLowerCase().includes(buscaEvento.trim().toLowerCase()));
 
   const StockRow = ({p}) => {
     const qtd = ctx.estoqueData[p.nome];
@@ -4725,9 +4726,16 @@ function Estoque({ ctx }) {
           {antepastos.map(p=><StockRow key={p.id} p={p}/>)}
 
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:18,marginBottom:8}}>
-            <div style={{display:'flex',alignItems:'center',gap:6}}>
+            <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
               <div className="section-label">Pizzas para Eventos</div>
               <span style={{fontSize:10,fontWeight:700,background:'#eff6ff',color:'#1d4ed8',border:'1px solid #bfdbfe',borderRadius:20,padding:'1px 8px'}}>Não aparece no cardápio</span>
+              <input
+                type="text"
+                placeholder="Buscar sabor..."
+                value={buscaEvento}
+                onChange={e=>setBuscaEvento(e.target.value)}
+                style={{fontSize:12,padding:'3px 8px',borderRadius:8,border:`1px solid ${C.border}`,outline:'none',fontFamily:'inherit',width:140,color:C.text}}
+              />
             </div>
             <div style={{display:'flex',gap:6}}>
               {eventos.length===0&&<button onClick={importarParaEventos}
