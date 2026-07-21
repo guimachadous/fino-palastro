@@ -4657,8 +4657,11 @@ function Estoque({ ctx }) {
   const [fEdit,       setFEdit]       = useState(null);
   const [fBusca,      setFBusca]      = useState('');
   // form de cliente (criar/editar)
+  const [cTipo,        setCTipo]        = useState('pj'); // 'pj' | 'pf'
   const [cNome,        setCNome]        = useState('');
   const [cRazaoSocial, setCRazaoSocial] = useState('');
+  const [cCnpj,        setCCnpj]        = useState('');
+  const [cCpf,         setCCpf]         = useState('');
   const [cWhats,       setCWhats]       = useState('');
   const [cEndereco,    setCEndereco]    = useState('');
   const [cObs,         setCObs]         = useState('');
@@ -4734,14 +4737,14 @@ function Estoque({ ctx }) {
   const salvarCliente = () => {
     const nome = cNome.trim();
     if (!nome) return;
-    const dados = {nome, razaoSocial:cRazaoSocial.trim(), whatsapp:cWhats.trim(), endereco:cEndereco.trim(), obs:cObs.trim()};
+    const dados = {nome, tipo:cTipo, razaoSocial:cRazaoSocial.trim(), cnpj:cTipo==='pj'?cCnpj.trim():'', cpf:cTipo==='pf'?cCpf.trim():'', whatsapp:cWhats.trim(), endereco:cEndereco.trim(), obs:cObs.trim()};
     if (cEdit) {
       ctx.updCliente(cEdit.id, dados);
       setCEdit(null);
     } else {
       ctx.addCliente(dados);
     }
-    setCNome(''); setCRazaoSocial(''); setCWhats(''); setCEndereco(''); setCObs('');
+    setCTipo('pj'); setCNome(''); setCRazaoSocial(''); setCCnpj(''); setCCpf(''); setCWhats(''); setCEndereco(''); setCObs('');
   };
 
   // Ranking de vendas por sabor (todos os pedidos não cancelados)
@@ -4982,10 +4985,35 @@ function Estoque({ ctx }) {
         <div>
           <div className="card" style={{marginBottom:14}}>
             <div style={{fontWeight:700,fontSize:15,marginBottom:12}}>{cEdit?'Editar Cliente':'Novo Cliente'}</div>
-            <label className="label">Nome Fantasia *</label>
-            <input className="input" placeholder="Nome pelo qual é conhecido" value={cNome} onChange={e=>setCNome(e.target.value)} style={{marginBottom:10}}/>
-            <label className="label">Razão Social</label>
-            <input className="input" placeholder="Razão social / nome completo" value={cRazaoSocial} onChange={e=>setCRazaoSocial(e.target.value)} style={{marginBottom:10}}/>
+            {/* Toggle PJ / PF */}
+            <div style={{display:'flex',background:'#f5f0e8',borderRadius:10,padding:3,marginBottom:12}}>
+              {[['pj','🏢 Pessoa Jurídica'],['pf','👤 Pessoa Física']].map(([k,l])=>(
+                <button key={k} onClick={()=>setCTipo(k)}
+                  style={{flex:1,padding:'7px 4px',border:'none',borderRadius:8,cursor:'pointer',fontSize:12,fontWeight:700,
+                    background:cTipo===k?'white':'transparent',color:cTipo===k?C.red:C.text2,
+                    boxShadow:cTipo===k?'0 1px 3px rgba(0,0,0,0.1)':'none',fontFamily:'inherit',transition:'all 0.15s'}}>
+                  {l}
+                </button>
+              ))}
+            </div>
+            <label className="label">{cTipo==='pj'?'Nome Fantasia *':'Nome *'}</label>
+            <input className="input" placeholder={cTipo==='pj'?'Nome pelo qual é conhecido':'Nome completo'} value={cNome} onChange={e=>setCNome(e.target.value)} style={{marginBottom:10}}/>
+            {cTipo==='pj'&&<>
+              <label className="label">Razão Social</label>
+              <input className="input" placeholder="Razão social" value={cRazaoSocial} onChange={e=>setCRazaoSocial(e.target.value)} style={{marginBottom:10}}/>
+              <label className="label">CNPJ</label>
+              <input className="input" placeholder="00.000.000/0000-00" value={cCnpj} onChange={e=>{
+                const v=e.target.value.replace(/\D/g,'').slice(0,14);
+                setCCnpj(v.length<=2?v:v.length<=5?v.slice(0,2)+'.'+v.slice(2):v.length<=8?v.slice(0,2)+'.'+v.slice(2,5)+'.'+v.slice(5):v.length<=12?v.slice(0,2)+'.'+v.slice(2,5)+'.'+v.slice(5,8)+'/'+v.slice(8):v.slice(0,2)+'.'+v.slice(2,5)+'.'+v.slice(5,8)+'/'+v.slice(8,12)+'-'+v.slice(12));
+              }} style={{marginBottom:10}}/>
+            </>}
+            {cTipo==='pf'&&<>
+              <label className="label">CPF</label>
+              <input className="input" placeholder="000.000.000-00" value={cCpf} onChange={e=>{
+                const v=e.target.value.replace(/\D/g,'').slice(0,11);
+                setCCpf(v.length<=3?v:v.length<=6?v.slice(0,3)+'.'+v.slice(3):v.length<=9?v.slice(0,3)+'.'+v.slice(3,6)+'.'+v.slice(6):v.slice(0,3)+'.'+v.slice(3,6)+'.'+v.slice(6,9)+'-'+v.slice(9));
+              }} style={{marginBottom:10}}/>
+            </>}
             <label className="label">WhatsApp</label>
             <input className="input" placeholder="(48) 99999-9999" value={cWhats} onChange={e=>setCWhats(e.target.value)} style={{marginBottom:10}}/>
             <label className="label">Endereço</label>
@@ -4997,12 +5025,56 @@ function Estoque({ ctx }) {
                 style={{flex:1,background:cNome.trim()?C.red:'#e5e7eb',border:'none',borderRadius:12,padding:12,color:cNome.trim()?'white':'#9ca3af',fontWeight:700,cursor:cNome.trim()?'pointer':'default',fontFamily:'inherit'}}>
                 {cEdit?'Salvar':'Cadastrar'}
               </button>
-              {cEdit&&<button onClick={()=>{setCEdit(null);setCNome('');setCRazaoSocial('');setCWhats('');setCEndereco('');setCObs('');}}
+              {cEdit&&<button onClick={()=>{setCEdit(null);setCTipo('pj');setCNome('');setCRazaoSocial('');setCCnpj('');setCCpf('');setCWhats('');setCEndereco('');setCObs('');}}
                 style={{background:'#f0ebe4',border:'none',borderRadius:12,padding:'12px 16px',cursor:'pointer',fontFamily:'inherit'}}>
                 Cancelar
               </button>}
             </div>
           </div>
+
+          {/* ── Rotina de Reativação ── */}
+          {(()=>{
+            const hoje = new Date(); hoje.setHours(0,0,0,0);
+            const clientesInativos = ctx.clientes.filter(c=>c.cnpj||c.cpf).map(c=>{
+              const pedidosCliente = ctx.orders.filter(o=>o.status!=='cancelled'&&o.status!=='cancelado'&&(o.client||'').toLowerCase()===c.nome.toLowerCase());
+              const datas = pedidosCliente.map(o=>(o.paidAt||o.createdAt||'').slice(0,10)).filter(Boolean).sort().reverse();
+              const ultima = datas[0]||null;
+              const dias = ultima ? Math.floor((hoje-new Date(ultima))/(1000*60*60*24)) : null;
+              return {...c, ultimaCompra:ultima, diasSemCompra:dias};
+            }).filter(c=>c.diasSemCompra===null||c.diasSemCompra>=15).sort((a,b)=>(b.diasSemCompra??9999)-(a.diasSemCompra??9999));
+            if (!clientesInativos.length) return null;
+            return (
+              <div style={{background:'#fff7ed',border:'1px solid #fde68a',borderRadius:14,padding:'12px 14px',marginBottom:14}}>
+                <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:10}}>
+                  <span style={{fontSize:16}}>⚠️</span>
+                  <span style={{fontWeight:700,fontSize:13,color:'#b45309'}}>Clientes para Reativar</span>
+                  <span style={{fontSize:11,color:'#b45309',background:'#fef3c7',borderRadius:10,padding:'1px 7px',fontWeight:700}}>{clientesInativos.length}</span>
+                </div>
+                {clientesInativos.map((c,i)=>{
+                  const tel=(c.whatsapp||'').replace(/\D/g,'');
+                  const doc=c.cnpj||c.cpf||'';
+                  const waLink=tel.length>=10?`https://wa.me/55${tel}?text=${encodeURIComponent(`Olá ${c.nome}! Temos novidades no Fino Palastro. 🍕`)}`:null;
+                  return (
+                    <div key={c.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderTop:i>0?'1px solid #fde68a':'none'}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontWeight:700,fontSize:13}}>{c.nome}</div>
+                        <div style={{fontSize:11,color:'#92400e',fontFamily:'monospace'}}>{doc}</div>
+                        <div style={{fontSize:11,color:'#b45309',marginTop:1}}>
+                          {c.diasSemCompra===null?'Nunca comprou':`${c.diasSemCompra} dias sem comprar`}
+                        </div>
+                      </div>
+                      {waLink&&<a href={waLink} target="_blank" rel="noopener noreferrer"
+                        style={{display:'inline-flex',alignItems:'center',gap:4,background:'#25D366',color:'white',
+                          borderRadius:8,padding:'5px 10px',fontSize:11,fontWeight:700,textDecoration:'none',whiteSpace:'nowrap',flexShrink:0}}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                        Chamar
+                      </a>}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           {ctx.clientes.length===0&&(
             <div style={{textAlign:'center',padding:'24px 0',color:C.text2,fontSize:13}}>Nenhum cliente cadastrado.</div>
@@ -5013,8 +5085,16 @@ function Estoque({ ctx }) {
             return (
               <div key={c.id} className="card" style={{marginBottom:8,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontWeight:700,fontSize:14}}>{c.nome}</div>
+                  <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                    <span style={{fontWeight:700,fontSize:14}}>{c.nome}</span>
+                    <span style={{fontSize:9,fontWeight:800,padding:'1px 6px',borderRadius:8,
+                      background:c.tipo==='pf'?'#eff6ff':'#fff7ed',
+                      color:c.tipo==='pf'?'#1d4ed8':'#b45309',border:`1px solid ${c.tipo==='pf'?'#bfdbfe':'#fde68a'}`}}>
+                      {c.tipo==='pf'?'PF':'PJ'}
+                    </span>
+                  </div>
                   {c.razaoSocial&&<div style={{fontSize:11,color:'#9ca3af',marginTop:1}}>{c.razaoSocial}</div>}
+                  {(c.cnpj||c.cpf)&&<div style={{fontSize:11,color:C.text2,marginTop:1,fontFamily:'monospace'}}>{c.cnpj||c.cpf}</div>}
                   {c.whatsapp&&(
                     <div style={{fontSize:12,color:C.text2,marginTop:2,display:'flex',alignItems:'center',gap:6}}>
                       {c.whatsapp}
@@ -5032,7 +5112,7 @@ function Estoque({ ctx }) {
                   {c.obs&&<div style={{fontSize:11,color:C.text2,marginTop:2,fontStyle:'italic'}}>{c.obs}</div>}
                 </div>
                 <div style={{display:'flex',gap:6,marginLeft:8}}>
-                  <button onClick={()=>{setCEdit(c);setCNome(c.nome);setCRazaoSocial(c.razaoSocial||'');setCWhats(c.whatsapp||'');setCEndereco(c.endereco||'');setCObs(c.obs||'');}}
+                  <button onClick={()=>{setCEdit(c);setCTipo(c.tipo||'pj');setCNome(c.nome);setCRazaoSocial(c.razaoSocial||'');setCCnpj(c.cnpj||'');setCCpf(c.cpf||'');setCWhats(c.whatsapp||'');setCEndereco(c.endereco||'');setCObs(c.obs||'');}}
                     style={{background:'#f0ebe4',border:'none',borderRadius:10,padding:'6px 12px',cursor:'pointer',fontSize:12,fontFamily:'inherit'}}>Editar</button>
                   <button onClick={()=>ctx.delCliente(c.id)}
                     style={{background:'transparent',border:'none',cursor:'pointer',padding:6}}>{I.trash('#ccc',13)}</button>
