@@ -491,10 +491,6 @@ function App({ currentUserEmail, onLogout }) {
   const addOrder  = o => {
     const nId = genId(); const ord = {...o, id:nId, createdAt:today()};
     setOrders(p => [ord, ...p]);
-    setContas(p => [{id:genId(), tipo:'receber', descricao:`Pedido – ${o.client||'Cliente'}`,
-      valor:o.total||0, vencimento:o.deliveryDate||today(), categoria:'Pedido',
-      cliente:o.client||'', origemId:nId, origemTipo:'pedido',
-      pago:false, criadoEm:today(), pagoEm:null}, ...p]);
   };
   const addEvent  = e => setEvents(p => [{...e,  id:genId(), createdAt:today()}, ...p]);
   const updOrder  = (id,d) => {
@@ -740,12 +736,6 @@ function App({ currentUserEmail, onLogout }) {
       }
       if (newOrds.length > 0) {
         setOrders(p => [...newOrds, ...p]);
-        const newContasR = newOrds.map(o => ({id:genId(), tipo:'receber',
-          descricao:`Pedido – ${o.client||'Cliente'}`, valor:o.total||0,
-          vencimento:o.deliveryDate||o.createdAt, categoria:'Pedido',
-          cliente:o.client||'', origemId:o.id, origemTipo:'pedido',
-          pago:false, criadoEm:today(), pagoEm:null}));
-        setContas(p => [...newContasR, ...p]);
       }
 
       // ── Eventos ──
