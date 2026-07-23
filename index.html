@@ -301,7 +301,7 @@ const PRODUCTS_DEFAULT = [
 const CATS_IN_DEFAULT  = ['Venda Congelada','Evento ao Vivo','Evento Express','Outros'];
 const CATS_OUT_DEFAULT = ['Insumos/Ingredientes','Embalagens','Despesa Fixa','Despesa Variável','Marketing','Outros'];
 const CATS_P_DEFAULT = ['Fornecedor','Ingredientes','Embalagem','Aluguel','Serviço','Outros'];
-const CATS_R_DEFAULT = ['Pedido','Evento','Serviço','Outros'];
+const CATS_R_DEFAULT = ['Pedido','Evento','Venda Congelada','Serviço','Outros'];
 const UNIDADES_DEFAULT = ['KG','LT','PCT','UN','CX','G','ML'];
 
 // Lista de pizzas do cardápio — usada para controle de estoque (e fonte do catálogo sincronizado com pedidos)
@@ -456,6 +456,8 @@ function App({ currentUserEmail, onLogout }) {
     PIZZAS_ESTOQUE_DEFAULT.filter(p=>!nomes.includes(p.nome)).forEach(p=>addSabor(p));
   },[sabores]);
   useEffect(()=>{ if(initDone.current) db.set('fp_cats_receber', catsReceber);  }, [catsReceber]);
+  // Migration: garante que 'Venda Congelada' existe em catsReceber
+  useEffect(()=>{ if(!catsReceber.includes('Venda Congelada')) setCatsReceber(p=>[...p.filter(c=>c!=='Outros'),'Venda Congelada','Outros']); },[]);
   useEffect(()=>{ if(initDone.current) db.set('fp_cats_in',      catsIn);       }, [catsIn]);
   useEffect(()=>{ if(initDone.current) db.set('fp_cats_out',     catsOut);      }, [catsOut]);
 
@@ -959,7 +961,10 @@ function App({ currentUserEmail, onLogout }) {
 
   const headerAction = () => {
     if (tab==='dashboard'||tab==='finance') return <button onClick={()=>open('add_trans',{type:'entrada'})} style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 13px',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5,fontFamily:'inherit'}}>{I.plus('white',15)} Lançar</button>;
-    if (tab==='orders')  return <button onClick={()=>open('add_order')} style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 13px',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5,fontFamily:'inherit'}}>{I.plus('white',15)} Pedido</button>;
+    if (tab==='orders')  return <div style={{display:'flex',gap:6}}>
+      <button onClick={()=>open('import_bloco')} style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 13px',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5,fontFamily:'inherit'}}>📋 Importar</button>
+      <button onClick={()=>open('add_order')} style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 13px',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5,fontFamily:'inherit'}}>{I.plus('white',15)} Pedido</button>
+    </div>;
     if (tab==='events')  return <button onClick={()=>open('add_event')} style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 13px',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5,fontFamily:'inherit'}}>{I.plus('white',15)} Evento</button>;
     if (tab==='contas')  return <button onClick={()=>open('add_conta')} style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 13px',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5,fontFamily:'inherit'}}>{I.plus('white',15)} Conta</button>;
     return null;
@@ -1052,6 +1057,7 @@ function App({ currentUserEmail, onLogout }) {
 
       </div>{/* fim main content */}
 
+      {modal==='import_bloco' && <ImportBlocoModal ctx={ctx}/>}
       {modal==='add_trans'  && <TransModal   ctx={ctx} initType={mData?.type}/>}
       {modal==='add_order'  && <OrderModal   ctx={ctx}/>}
       {modal==='edit_order' && <OrderModal   ctx={ctx} order={mData}/>}
@@ -1380,6 +1386,155 @@ function Finance({ ctx }) {
       <div style={{position:'fixed',bottom:90,right:16,display:'flex',flexDirection:'column',gap:10,zIndex:90}}>
         <button onClick={()=>ctx.open('add_trans',{type:'saida'})} style={{width:46,height:46,borderRadius:'50%',background:C.red,color:'white',border:'none',cursor:'pointer',fontSize:18,fontWeight:800,boxShadow:'0 4px 16px rgba(200,37,24,0.4)'}}>↓</button>
         <button onClick={()=>ctx.open('add_trans',{type:'entrada'})} style={{width:46,height:46,borderRadius:'50%',background:C.green,color:'white',border:'none',cursor:'pointer',fontSize:18,fontWeight:800,boxShadow:'0 4px 16px rgba(42,125,79,0.35)'}}>↑</button>
+      </div>
+    </div>
+  );
+}
+
+// ── IMPORTAR BLOCO DE NOTAS ──────────────────────────────────────────────
+function parseBlocoDeNotas(text) {
+  const orders = [];
+  const lines = text.split('\n');
+  let cur = null;
+  for (let line of lines) {
+    const raw = line.trimEnd();
+    if (!raw.trim()) continue;
+    // Cabeçalho: "1 - Nome"
+    const hdr = raw.trim().match(/^(\d+)\s*-\s*(.+)$/);
+    if (hdr) {
+      if (cur) orders.push(cur);
+      cur = { numeroPedido: parseInt(hdr[1]), client: hdr[2].trim(), items: [], total: 0, delivery: 0 };
+      continue;
+    }
+    if (!cur) continue;
+    // Item: "- [x] 2 Calabresa" ou "- [ ] Filé c gorgonzola"
+    const item = raw.trim().match(/^-\s*\[.\]\s*(.+)$/);
+    if (item) {
+      let txt = item[1].trim().replace(/^-\s*/, '');
+      const qm = txt.match(/^(\d+)\s*[-–]?\s*(.+)$/);
+      if (qm) { cur.items.push({ productName: qm[2].trim(), qty: parseInt(qm[1]), price: 0 }); }
+      else     { cur.items.push({ productName: txt, qty: 1, price: 0 }); }
+      continue;
+    }
+    // Total: "R$680,00 + entrega = R$695,00" ou "R$600,00"
+    if (raw.includes('R$')) {
+      const ent = raw.match(/R\$\s*([\d.,]+)\s*\+\s*entrega\s*=\s*R\$\s*([\d.,]+)/i);
+      if (ent) {
+        const sub = parseFloat(ent[1].replace(/\./g,'').replace(',','.'));
+        const tot = parseFloat(ent[2].replace(/\./g,'').replace(',','.'));
+        cur.total    = sub;
+        cur.delivery = Math.round((tot - sub)*100)/100;
+      } else {
+        const jt = raw.match(/R\$\s*([\d.,]+)/);
+        if (jt) cur.total = parseFloat(jt[1].replace(/\./g,'').replace(',','.'));
+      }
+    }
+  }
+  if (cur) orders.push(cur);
+  return orders;
+}
+
+function ImportBlocoModal({ ctx }) {
+  const [texto, setTexto] = useState('');
+  const [preview, setPreview] = useState(null); // null = entrada, array = preview
+
+  const existingNums = new Set(
+    ctx.orders.filter(o=>o.numeroPedido).map(o=>o.numeroPedido)
+  );
+
+  const analisar = () => {
+    if (!texto.trim()) return;
+    const parsed = parseBlocoDeNotas(texto);
+    setPreview(parsed.map(p => ({ ...p, duplicado: existingNums.has(p.numeroPedido) })));
+  };
+
+  const confirmar = () => {
+    const novos = preview.filter(p => !p.duplicado);
+    novos.forEach(p => {
+      ctx.addOrder({
+        client: p.client,
+        status: 'pending',
+        paid: false,
+        items: p.items,
+        total: p.total,
+        delivery: p.delivery,
+        numeroPedido: p.numeroPedido,
+        source: 'bloco_notas',
+      });
+    });
+    ctx.close();
+  };
+
+  return (
+    <div className="modal-overlay" onClick={ctx.close}>
+      <div className="modal-box" onClick={e=>e.stopPropagation()} style={{maxWidth:480}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+          <div style={{fontWeight:800,fontSize:16}}>📋 Importar Bloco de Notas</div>
+          <button onClick={ctx.close} style={{background:'none',border:'none',cursor:'pointer',padding:4}}>{I.x(C.text2,20)}</button>
+        </div>
+
+        {!preview ? (
+          <>
+            <div style={{fontSize:12,color:C.text2,marginBottom:8}}>Cole aqui os pedidos do dia:</div>
+            <textarea
+              className="input"
+              value={texto}
+              onChange={e=>setTexto(e.target.value)}
+              placeholder={'1 - Bruno Menezes\n- [x] 2 Calabresa\nR$120,00'}
+              style={{width:'100%',height:220,resize:'vertical',fontSize:12,fontFamily:'monospace',marginBottom:12,boxSizing:'border-box'}}
+            />
+            <button onClick={analisar} disabled={!texto.trim()}
+              style={{width:'100%',background:texto.trim()?C.red:'#e5e7eb',border:'none',borderRadius:12,padding:13,
+                color:texto.trim()?'white':'#9ca3af',fontWeight:700,fontSize:14,cursor:texto.trim()?'pointer':'default',fontFamily:'inherit'}}>
+              Analisar Pedidos
+            </button>
+          </>
+        ) : (
+          <>
+            <div style={{maxHeight:400,overflowY:'auto',marginBottom:12}}>
+              {preview.map((p,i)=>(
+                <div key={i} style={{marginBottom:8,borderRadius:12,border:`1.5px solid ${p.duplicado?'#fde68a':C.border}`,
+                  background:p.duplicado?'#fffbeb':'white',padding:'10px 12px',opacity:p.duplicado?0.7:1}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+                    <div style={{fontWeight:700,fontSize:13}}>
+                      #{p.numeroPedido} — {p.client}
+                    </div>
+                    {p.duplicado
+                      ? <span style={{fontSize:10,fontWeight:700,background:'#fef3c7',color:'#b45309',borderRadius:8,padding:'2px 7px'}}>já importado</span>
+                      : <span style={{fontSize:12,fontWeight:800,color:C.red}}>R$ {(p.total+(p.delivery||0)).toFixed(2).replace('.',',')}</span>
+                    }
+                  </div>
+                  <div style={{fontSize:11,color:C.text2}}>
+                    {p.items.map((it,j)=><span key={j} style={{marginRight:8}}>{it.qty}x {it.productName}</span>)}
+                  </div>
+                  {p.delivery>0&&<div style={{fontSize:11,color:C.text2,marginTop:2}}>+R$ {p.delivery.toFixed(2).replace('.',',')} entrega</div>}
+                </div>
+              ))}
+            </div>
+            {(() => {
+              const novos = preview.filter(p=>!p.duplicado);
+              const dups  = preview.filter(p=>p.duplicado);
+              return (
+                <div style={{background:'#f5f0e8',borderRadius:12,padding:'10px 12px',marginBottom:12,fontSize:12}}>
+                  <span style={{color:C.green,fontWeight:700}}>{novos.length} para adicionar</span>
+                  {dups.length>0&&<span style={{color:'#b45309',fontWeight:700,marginLeft:12}}>{dups.length} já existem (ignorados)</span>}
+                  {novos.length>0&&<span style={{color:C.text2,marginLeft:12}}>Total: R$ {novos.reduce((s,p)=>s+p.total+(p.delivery||0),0).toFixed(2).replace('.',',')}</span>}
+                </div>
+              );
+            })()}
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={()=>setPreview(null)}
+                style={{flex:1,background:'#f0ebe4',border:'none',borderRadius:12,padding:12,cursor:'pointer',fontWeight:700,fontFamily:'inherit'}}>
+                ← Voltar
+              </button>
+              <button onClick={confirmar} disabled={!preview.some(p=>!p.duplicado)}
+                style={{flex:2,background:preview.some(p=>!p.duplicado)?C.red:'#e5e7eb',border:'none',borderRadius:12,padding:12,
+                  color:preview.some(p=>!p.duplicado)?'white':'#9ca3af',fontWeight:700,fontSize:14,cursor:preview.some(p=>!p.duplicado)?'pointer':'default',fontFamily:'inherit'}}>
+                ✓ Adicionar {preview.filter(p=>!p.duplicado).length} Pedido(s)
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -4311,6 +4466,13 @@ function ContaModal({ ctx, initTipo, conta }) {
             </div>
           ))}
         </div>
+
+        {tipo==='receber' && categoria==='Venda Congelada' && (
+          <div style={{background:'#f0fdf4',border:'1px solid #86efac',borderRadius:10,padding:'8px 12px',marginBottom:14,fontSize:12,color:'#166534',display:'flex',alignItems:'center',gap:8}}>
+            <span style={{fontSize:16}}>✅</span>
+            <span>Ao receber, o valor será contabilizado no <strong>pro-labore de Guilherme e Samantha</strong> (aba Lucros).</span>
+          </div>
+        )}
 
         <label className="label">Fornecedor / Cliente (opcional)</label>
         <div style={{position:'relative',marginBottom:14}}>
