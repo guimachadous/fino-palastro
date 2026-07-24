@@ -664,7 +664,7 @@ function App({ currentUserEmail, onLogout }) {
   const paidOrder = o => {
     const pd = today();
     updOrder(o.id,{paid:true,status:'delivered',paidAt:pd});
-    addTrans({date:pd,type:'entrada',category:'Venda Congelada',amount:o.total,description:`Pedido – ${o.client}`,paymentMethod:'Pix',ref:o.id});
+    addTrans({date:pd,type:'entrada',category:'Venda Congelada',amount:o.total-(o.frete||0),description:`Pedido – ${o.client}`,paymentMethod:'Pix',ref:o.id});
     setContas(p => p.map(c => c.origemId===o.id&&c.tipo==='receber'?{...c,pago:true,pagoEm:pd}:c));
   };
   // Desfaz um pagamento marcado por engano: remove o lançamento financeiro
