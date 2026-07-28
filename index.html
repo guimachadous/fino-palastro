@@ -4843,6 +4843,8 @@ function Estoque({ ctx }) {
   const [cObs,         setCObs]         = useState('');
   const [cEdit,        setCEdit]        = useState(null);
   const [cListaTipo,   setCListaTipo]   = useState('todos'); // 'todos'|'pf'|'pj'
+  const [msgReativacao, setMsgReativacao] = useState('Olá {nome}! Temos novidades no Fino Palastro 🍕 Sentimos sua falta! Que tal fazer um pedido?');
+  const [editandoMsg,   setEditandoMsg]   = useState(false);
   // form de sabor (criar/editar) — null = fechado, {} = novo, objeto = editando
   const [saborForm, setSaborForm] = useState(null);
   const [sfNome, setSfNome] = useState('');
@@ -5222,15 +5224,27 @@ function Estoque({ ctx }) {
             if (!clientesInativos.length) return null;
             return (
               <div style={{background:'#fff7ed',border:'1px solid #fde68a',borderRadius:14,padding:'12px 14px',marginBottom:14}}>
-                <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:10}}>
+                <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}>
                   <span style={{fontSize:16}}>⚠️</span>
                   <span style={{fontWeight:700,fontSize:13,color:'#b45309'}}>Clientes para Reativar</span>
                   <span style={{fontSize:11,color:'#b45309',background:'#fef3c7',borderRadius:10,padding:'1px 7px',fontWeight:700}}>{clientesInativos.length}</span>
+                  <button onClick={()=>setEditandoMsg(p=>!p)}
+                    style={{marginLeft:'auto',background:'transparent',border:`1px solid #fcd34d`,borderRadius:8,padding:'3px 9px',fontSize:11,cursor:'pointer',color:'#92400e',fontFamily:'inherit',fontWeight:600}}>
+                    ✏️ {editandoMsg?'Fechar':'Editar mensagem'}
+                  </button>
                 </div>
+                {editandoMsg&&(
+                  <div style={{marginBottom:10,background:'#fffbeb',borderRadius:10,padding:'8px 10px',border:'1px solid #fcd34d'}}>
+                    <div style={{fontSize:11,color:'#92400e',marginBottom:5,fontWeight:600}}>Use <code style={{background:'#fef3c7',padding:'1px 4px',borderRadius:4}}>{'{nome}'}</code> para inserir o nome do cliente</div>
+                    <textarea value={msgReativacao} onChange={e=>setMsgReativacao(e.target.value)}
+                      rows={3} style={{width:'100%',fontSize:12,borderRadius:8,border:'1px solid #fcd34d',padding:'6px 8px',fontFamily:'inherit',resize:'vertical',boxSizing:'border-box',background:'white'}}/>
+                  </div>
+                )}
                 {clientesInativos.map((c,i)=>{
                   const tel=(c.whatsapp||'').replace(/\D/g,'');
                   const doc=c.cnpj||c.cpf||'';
-                  const waLink=tel.length>=10?`https://wa.me/55${tel}?text=${encodeURIComponent(`Olá ${c.nome}! Temos novidades no Fino Palastro. 🍕`)}`:null;
+                  const mensagem = msgReativacao.replace(/\{nome\}/gi, c.nome);
+                  const waLink=tel.length>=10?`https://wa.me/55${tel}?text=${encodeURIComponent(mensagem)}`:null;
                   return (
                     <div key={c.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderTop:i>0?'1px solid #fde68a':'none'}}>
                       <div style={{flex:1,minWidth:0}}>
