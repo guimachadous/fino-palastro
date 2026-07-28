@@ -1389,11 +1389,23 @@ function parseBlocoDeNotas(text) {
   for (let line of lines) {
     const raw = line.trimEnd();
     if (!raw.trim()) continue;
-    // Cabeçalho: "1 - Nome"
+    // Cabeçalho: "1 - Nome" ou "1 - Nome (11) 98765-4321" ou "1 - Nome 11987654321"
     const hdr = raw.trim().match(/^(\d+)\s*-\s*(.+)$/);
     if (hdr) {
       if (cur) orders.push(cur);
-      cur = { numeroPedido: parseInt(hdr[1]), client: hdr[2].trim(), items: [], total: 0, delivery: 0 };
+      let clientRaw = hdr[2].trim();
+      let whatsapp = '';
+      // Extrai telefone do final do nome: suporta "(11) 98765-4321", "11987654321", "(11987654321)"
+      const phoneRx = /\s*\(?\s*(\d{2}[\s\)]*\d{4,5}[\s\-]*\d{4})\s*\)?\s*$/;
+      const pm = clientRaw.match(phoneRx);
+      if (pm) {
+        const digits = pm[1].replace(/\D/g,'');
+        if (digits.length >= 10 && digits.length <= 11) {
+          whatsapp = digits;
+          clientRaw = clientRaw.slice(0, clientRaw.length - pm[0].length).trim();
+        }
+      }
+      cur = { numeroPedido: parseInt(hdr[1]), client: clientRaw, whatsapp, items: [], total: 0, delivery: 0 };
       continue;
     }
     if (!cur) continue;
@@ -1443,6 +1455,7 @@ function ImportBlocoModal({ ctx }) {
     novos.forEach(p => {
       ctx.addOrder({
         client: p.client,
+        whatsapp: p.whatsapp || '',
         status: 'pending',
         paid: false,
         items: p.items,
@@ -1451,6 +1464,16 @@ function ImportBlocoModal({ ctx }) {
         numeroPedido: p.numeroPedido,
         source: 'bloco_notas',
       });
+      // Auto-cadastrar cliente PF se não existir
+      const nomeNorm = (p.client||'').toLowerCase().trim();
+      if (!nomeNorm) return;
+      const existente = (ctx.clientes||[]).find(c => c.nome.toLowerCase() === nomeNorm);
+      if (!existente) {
+        ctx.addCliente({ nome: p.client, tipo: 'pf', whatsapp: p.whatsapp||'', razaoSocial:'', cnpj:'', cpf:'', endereco:'', obs:'' });
+      } else if (p.whatsapp && !existente.whatsapp) {
+        // Atualiza o WhatsApp se o cliente já existe mas não tem número
+        ctx.updCliente(existente.id, { whatsapp: p.whatsapp });
+      }
     });
     ctx.close();
   };
@@ -1498,6 +1521,7 @@ function ImportBlocoModal({ ctx }) {
                     {p.items.map((it,j)=><span key={j} style={{marginRight:8}}>{it.qty}x {it.productName}</span>)}
                   </div>
                   {p.delivery>0&&<div style={{fontSize:11,color:C.text2,marginTop:2}}>+R$ {p.delivery.toFixed(2).replace('.',',')} entrega</div>}
+                  {p.whatsapp&&<div style={{fontSize:11,color:'#059669',marginTop:2}}>📱 {p.whatsapp}</div>}
                 </div>
               ))}
             </div>
@@ -4818,6 +4842,7 @@ function Estoque({ ctx }) {
   const [cEndereco,    setCEndereco]    = useState('');
   const [cObs,         setCObs]         = useState('');
   const [cEdit,        setCEdit]        = useState(null);
+  const [cListaTipo,   setCListaTipo]   = useState('todos'); // 'todos'|'pf'|'pj'
   // form de sabor (criar/editar) — null = fechado, {} = novo, objeto = editando
   const [saborForm, setSaborForm] = useState(null);
   const [sfNome, setSfNome] = useState('');
@@ -5187,7 +5212,7 @@ function Estoque({ ctx }) {
           {/* ── Rotina de Reativação ── */}
           {(()=>{
             const hoje = new Date(); hoje.setHours(0,0,0,0);
-            const clientesInativos = ctx.clientes.filter(c=>c.cnpj||c.cpf).map(c=>{
+            const clientesInativos = ctx.clientes.filter(c=>c.whatsapp||c.cnpj||c.cpf).map(c=>{
               const pedidosCliente = ctx.orders.filter(o=>o.status!=='cancelled'&&o.status!=='cancelado'&&(o.client||'').toLowerCase()===c.nome.toLowerCase());
               const datas = pedidosCliente.map(o=>(o.paidAt||o.createdAt||'').slice(0,10)).filter(Boolean).sort().reverse();
               const ultima = datas[0]||null;
@@ -5228,10 +5253,30 @@ function Estoque({ ctx }) {
             );
           })()}
 
-          {ctx.clientes.length===0&&(
-            <div style={{textAlign:'center',padding:'24px 0',color:C.text2,fontSize:13}}>Nenhum cliente cadastrado.</div>
+          {/* Filtro PF / PJ */}
+          {ctx.clientes.length>0&&(
+            <div style={{display:'flex',gap:6,marginBottom:12,flexWrap:'wrap'}}>
+              {[['todos','Todos'],['pf','👤 PF'],['pj','🏢 PJ']].map(([k,l])=>{
+                const cnt = k==='todos'?ctx.clientes.length:ctx.clientes.filter(c=>(c.tipo||'pj')===k).length;
+                return (
+                  <button key={k} onClick={()=>setCListaTipo(k)}
+                    style={{padding:'6px 14px',border:`1.5px solid ${cListaTipo===k?C.red:C.border}`,
+                      borderRadius:20,background:cListaTipo===k?C.red:'white',
+                      color:cListaTipo===k?'white':C.text2,fontWeight:700,fontSize:12,
+                      cursor:'pointer',fontFamily:'inherit'}}>
+                    {l} <span style={{opacity:0.7,fontWeight:400}}>({cnt})</span>
+                  </button>
+                );
+              })}
+            </div>
           )}
-          {ctx.clientes.map(c=>{
+
+          {ctx.clientes.filter(c=>cListaTipo==='todos'||(c.tipo||'pj')===cListaTipo).length===0&&(
+            <div style={{textAlign:'center',padding:'24px 0',color:C.text2,fontSize:13}}>
+              {ctx.clientes.length===0?'Nenhum cliente cadastrado.':'Nenhum cliente nesta categoria.'}
+            </div>
+          )}
+          {ctx.clientes.filter(c=>cListaTipo==='todos'||(c.tipo||'pj')===cListaTipo).map(c=>{
             const tel = (c.whatsapp||'').replace(/\D/g,'');
             const waLink = tel.length>=10 ? 'https://wa.me/55'+tel : null;
             return (
