@@ -1277,32 +1277,59 @@ function Dashboard({ ctx }) {
 function Finance({ ctx }) {
   const [period, setPeriod] = useState('month');
   const [typeF,  setTypeF]  = useState('all');
+  const [customDe,  setCustomDe]  = useState('');
+  const [customAte, setCustomAte] = useState('');
   const isReports = period === 'reports';
+  const isCustom  = period === 'custom';
   const now = new Date();
   const cuts = {
     today: today(),
     week:  (()=>{ const d=new Date(); d.setDate(d.getDate()-6); return d.toISOString().split('T')[0]; })(),
     month: `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`,
   };
-  const list   = isReports ? [] : ctx.trans.filter(t=>t.date>=cuts[period]&&(typeF==='all'||t.type===typeF)).sort((a,b)=>b.date>a.date?1:-1);
+  const list = isReports ? [] : ctx.trans.filter(t=>{
+    if (typeF!=='all' && t.type!==typeF) return false;
+    if (isCustom) {
+      if (customDe  && t.date < customDe)  return false;
+      if (customAte && t.date > customAte) return false;
+      return true;
+    }
+    return t.date >= cuts[period];
+  }).sort((a,b)=>b.date>a.date?1:-1);
   const totIn  = list.filter(t=>t.type==='entrada').reduce((s,t)=>s+t.amount,0);
   const totOut = list.filter(t=>t.type==='saida'  ).reduce((s,t)=>s+t.amount,0);
   const bal    = totIn-totOut;
   const catMap = {};
   list.forEach(t=>{ if(!catMap[t.category])catMap[t.category]={in:0,out:0}; catMap[t.category][t.type==='entrada'?'in':'out']+=t.amount; });
 
-  const chips = [['today','Hoje'],['week','7 dias'],['month','Mês'],['reports','📊 Relatórios']];
+  const chips = [['today','Hoje'],['week','7 dias'],['month','Mês'],['custom','📅 Período'],['reports','📊 Relatórios']];
 
   return (
     <div>
-      <div className="scroll-row" style={{marginBottom:14}}>
+      <div className="scroll-row" style={{marginBottom:isCustom?8:14}}>
         {chips.map(([k,l])=>(
           <button key={k} className="chip" onClick={()=>setPeriod(k)}
-            style={{background:period===k?C.red:'white',color:period===k?'white':C.text2,border:`1px solid ${period===k?C.red:C.border}`,fontSize:period==='reports'&&k==='reports'?12:13}}>
+            style={{background:period===k?C.red:'white',color:period===k?'white':C.text2,border:`1px solid ${period===k?C.red:C.border}`,fontSize:13}}>
             {l}
           </button>
         ))}
       </div>
+      {isCustom&&(
+        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14,flexWrap:'wrap'}}>
+          <span style={{fontSize:12,color:C.text2,fontWeight:600}}>De</span>
+          <input type="date" value={customDe} onChange={e=>setCustomDe(e.target.value)}
+            style={{fontSize:13,padding:'6px 10px',borderRadius:10,border:`1px solid ${C.border}`,fontFamily:'inherit',color:C.text,outline:'none'}}/>
+          <span style={{fontSize:12,color:C.text2,fontWeight:600}}>Até</span>
+          <input type="date" value={customAte} onChange={e=>setCustomAte(e.target.value)}
+            style={{fontSize:13,padding:'6px 10px',borderRadius:10,border:`1px solid ${C.border}`,fontFamily:'inherit',color:C.text,outline:'none'}}/>
+          {(customDe||customAte)&&(
+            <button onClick={()=>{setCustomDe('');setCustomAte('');}}
+              style={{fontSize:12,background:'transparent',border:`1px solid ${C.border}`,borderRadius:10,padding:'6px 10px',cursor:'pointer',color:C.text2,fontFamily:'inherit'}}>
+              Limpar
+            </button>
+          )}
+        </div>
+      )}
 
       {isReports ? <RelatoriosView ctx={ctx}/> : (
         <div>
@@ -1418,17 +1445,32 @@ function parseBlocoDeNotas(text) {
       else     { cur.items.push({ productName: txt, qty: 1, price: 0 }); }
       continue;
     }
-    // Total: "R$680,00 + entrega = R$695,00" ou "R$600,00"
-    if (raw.includes('R$')) {
-      const ent = raw.match(/R\$\s*([\d.,]+)\s*\+\s*entrega\s*=\s*R\$\s*([\d.,]+)/i);
-      if (ent) {
-        const sub = parseFloat(ent[1].replace(/\./g,'').replace(',','.'));
-        const tot = parseFloat(ent[2].replace(/\./g,'').replace(',','.'));
+    // Total — suporta vários formatos:
+    // "R$175,00 + 7,00 de entrega"   → subtotal + entrega separada
+    // "R$175,00 + R$7,00 de entrega" → idem, com R$ na entrega
+    // "R$680,00 + entrega = R$695,00" → subtotal + total com entrega
+    // "R$600,00"                       → só subtotal
+    if (raw.includes('R$') || raw.match(/[\d]+[,.][\d]{2}/)) {
+      const toNum = s => parseFloat((s||'').replace(/\./g,'').replace(',','.')) || 0;
+      // Formato: R$175,00 + 7,00 de entrega  (entrega como valor adicional)
+      const fmt1 = raw.match(/R\$\s*([\d.,]+)\s*\+\s*R?\$?\s*([\d.,]+)\s*de\s*entrega/i);
+      // Formato: R$680,00 + entrega = R$695,00  (total com entrega no final)
+      const fmt2 = raw.match(/R\$\s*([\d.,]+)\s*\+\s*entrega\s*=\s*R\$\s*([\d.,]+)/i);
+      // Formato: R$175,00 + entrega 7,00  (entrega após a palavra)
+      const fmt3 = raw.match(/R\$\s*([\d.,]+)\s*\+\s*entrega\s+R?\$?\s*([\d.,]+)/i);
+      if (fmt1) {
+        cur.total    = toNum(fmt1[1]);
+        cur.delivery = toNum(fmt1[2]);
+      } else if (fmt2) {
+        const sub = toNum(fmt2[1]), tot = toNum(fmt2[2]);
         cur.total    = sub;
         cur.delivery = Math.round((tot - sub)*100)/100;
+      } else if (fmt3) {
+        cur.total    = toNum(fmt3[1]);
+        cur.delivery = toNum(fmt3[2]);
       } else {
         const jt = raw.match(/R\$\s*([\d.,]+)/);
-        if (jt) cur.total = parseFloat(jt[1].replace(/\./g,'').replace(',','.'));
+        if (jt) cur.total = toNum(jt[1]);
       }
     }
   }
