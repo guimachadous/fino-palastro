@@ -3009,15 +3009,23 @@ function RelatoriosView({ ctx }) {
     return Object.values(cons).sort((a,b)=>a.nome.localeCompare(b.nome,'pt'));
   })();
   const comprasPeriodo = (() => {
-    const lista = [];
+    const agg = {};
+    const add = (nome, qtd, unidade, valor) => {
+      if (!nome) return;
+      const k = nome.toLowerCase().trim();
+      if (!agg[k]) agg[k] = { nome, quantidade: 0, unidade: unidade||'', valor: 0 };
+      agg[k].quantidade += qtd || 0;
+      agg[k].valor      += valor || 0;
+      if (!agg[k].unidade && unidade) agg[k].unidade = unidade;
+    };
     ctx.contas.filter(c=>c.tipo==='pagar'&&inRange(c.vencimento||c.criadoEm)).forEach(c=>{
       if (Array.isArray(c.itens)&&c.itens.length) {
-        c.itens.forEach(it=>{ if(it&&it.quantidade>0) lista.push({data:c.vencimento||c.criadoEm||'',fornecedor:c.cliente||'',nome:it.nome||'',quantidade:it.quantidade,unidade:it.unidade||'',valor:it.valor||0}); });
+        c.itens.forEach(it=>{ if(it&&it.quantidade>0) add(it.nome||'', it.quantidade, it.unidade||'', it.valor||0); });
       } else if (c.descricao&&c.quantidade>0) {
-        lista.push({data:c.vencimento||c.criadoEm||'',fornecedor:c.cliente||'',nome:c.descricao||'',quantidade:c.quantidade,unidade:c.unidade||'',valor:c.valor||0});
+        add(c.descricao||'', c.quantidade, c.unidade||'', c.valor||0);
       }
     });
-    return lista.sort((a,b)=>b.data>a.data?-1:1);
+    return Object.values(agg).sort((a,b)=>b.valor-a.valor);
   })();
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -3107,21 +3115,20 @@ function RelatoriosView({ ctx }) {
           ? <div style={{textAlign:'center',color:C.text2,fontSize:13,padding:'16px 0',fontStyle:'italic'}}>Nenhuma compra{(relDe||relAte)?' no período':' registrada'}</div>
           : <>
               <div style={{display:'flex',justifyContent:'space-between',fontSize:10,color:C.text2,fontWeight:700,padding:'0 0 6px',borderBottom:`1px solid ${C.border}`,marginBottom:4}}>
-                <span>MATÉRIA-PRIMA</span><span>VALOR</span>
+                <span>MATÉRIA-PRIMA</span><span>TOTAL GASTO</span>
               </div>
               {comprasPeriodo.map((c,i)=>(
-                <div key={i} style={{padding:'8px 0',borderBottom:i<comprasPeriodo.length-1?`1px solid ${C.border}`:'none'}}>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
-                    <span style={{fontSize:13,fontWeight:700}}>{c.nome}</span>
-                    <span style={{fontSize:13,fontWeight:900,color:C.red}}>{fmtBRL(c.valor)}</span>
+                <div key={i} style={{padding:'9px 0',borderBottom:i<comprasPeriodo.length-1?`1px solid ${C.border}`:'none',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:700}}>{c.nome}</div>
+                    {c.quantidade>0&&<div style={{fontSize:11,color:C.text2,marginTop:1}}>{c.quantidade%1===0?c.quantidade:c.quantidade.toFixed(3).replace('.',',')} {c.unidade}</div>}
                   </div>
-                  <div style={{fontSize:11,color:C.text2,marginTop:2}}>
-                    {c.quantidade} {c.unidade}{c.fornecedor?` · ${c.fornecedor}`:''} · {fmtDate(c.data)}
-                  </div>
+                  <span style={{fontSize:13,fontWeight:900,color:C.red,whiteSpace:'nowrap',marginLeft:8}}>{fmtBRL(c.valor)}</span>
                 </div>
               ))}
-              <div style={{marginTop:10,fontSize:12,fontWeight:700,color:C.text2,textAlign:'right'}}>
-                Total comprado: {fmtBRL(comprasPeriodo.reduce((s,c)=>s+c.valor,0))}
+              <div style={{marginTop:10,paddingTop:8,borderTop:`2px solid ${C.border}`,display:'flex',justifyContent:'space-between',fontSize:13,fontWeight:800}}>
+                <span style={{color:C.text2}}>Total no período</span>
+                <span style={{color:C.red}}>{fmtBRL(comprasPeriodo.reduce((s,c)=>s+c.valor,0))}</span>
               </div>
             </>
         )}
