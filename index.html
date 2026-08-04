@@ -1441,8 +1441,8 @@ function parseBlocoDeNotas(text) {
     if (item) {
       let txt = item[1].trim().replace(/^-\s*/, '');
       const qm = txt.match(/^(\d+)\s*[-–]?\s*(.+)$/);
-      if (qm) { cur.items.push({ productName: qm[2].trim(), qty: parseInt(qm[1]), price: 0 }); }
-      else     { cur.items.push({ productName: txt, qty: 1, price: 0 }); }
+      if (qm) { cur.items.push({ productName: qm[2].trim(), qty: parseInt(qm[1]), unitPrice: 0 }); }
+      else     { cur.items.push({ productName: txt, qty: 1, unitPrice: 0 }); }
       continue;
     }
     // Total — suporta vários formatos:
@@ -2083,7 +2083,22 @@ function OrderModal({ ctx, order }) {
   const defaultItem = {productId:allProds[0]?.id,productName:allProds[0]?.nome,qty:1,unitPrice:allProds[0]?.preco||0,cat:allProds[0]?.cat};
   const [client,  setClient]  = useState(order?.client || '');
   const [wa,      setWa]      = useState(order?.whatsapp || '');
-  const [items,   setItems]   = useState(order?.items?.length ? order.items.map(i=>({...i})) : [defaultItem]);
+  const [items,   setItems]   = useState(() => {
+    if (!order?.items?.length) return [defaultItem];
+    return order.items.map(i => {
+      // Tenta encontrar o sabor pelo nome (pedidos importados do bloco de notas não têm productId)
+      const nome = (i.productName || i.nome || '').toLowerCase().trim();
+      const sabor = allProds.find(p => p.nome.toLowerCase() === nome)
+                 || allProds.find(p => p.nome.toLowerCase().includes(nome) || nome.includes(p.nome.toLowerCase()));
+      return {
+        productId:   i.productId   || sabor?.id        || allProds[0]?.id,
+        productName: i.productName || i.nome           || sabor?.nome || allProds[0]?.nome,
+        qty:         i.qty         || 1,
+        unitPrice:   i.unitPrice   || i.price          || sabor?.preco || allProds[0]?.preco || 0,
+        cat:         i.cat         || sabor?.cat        || allProds[0]?.cat,
+      };
+    });
+  });
   const [delDate, setDelDate] = useState(order?.deliveryDate || '');
   const [addr,    setAddr]    = useState(order?.deliveryAddress || '');
   const [notes,   setNotes]   = useState(order?.notes || '');
