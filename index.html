@@ -4521,11 +4521,36 @@ function ContaModal({ ctx, initTipo, conta }) {
     return (f.nome||'').toLowerCase().includes(q)||(f.razaoSocial||'').toLowerCase().includes(q);
   }).slice(0,8);
 
+  const [ultimoPrecoInfo, setUltimoPrecoInfo] = useState(null);
+
+  const computeUltimoPreco = (nome) => {
+    if (!nome || tipo !== 'pagar') { setUltimoPrecoInfo(null); return; }
+    const nomeNorm = nome.toLowerCase().trim();
+    const candidatos = (ctx.contas || []).filter(c => {
+      if (c.tipo !== 'pagar') return false;
+      if ((c.descricao||'').toLowerCase().trim() === nomeNorm) return true;
+      if (c.itens && c.itens.some(it => (it.nome||'').toLowerCase().trim() === nomeNorm)) return true;
+      return false;
+    }).sort((a,b) => (b.criadoEm||'') > (a.criadoEm||'') ? 1 : -1);
+    if (!candidatos.length) { setUltimoPrecoInfo(null); return; }
+    const ultima = candidatos[0];
+    let valorUnit = null, qtd = null, unidadeStr = null, valorTotal = ultima.valor;
+    if (ultima.itens && ultima.itens.length) {
+      const item = ultima.itens.find(it => (it.nome||'').toLowerCase().trim() === nomeNorm);
+      if (item) { qtd = item.quantidade; valorTotal = item.valor; unidadeStr = item.unidade; valorUnit = qtd ? item.valor / qtd : item.valor; }
+    } else {
+      qtd = ultima.quantidade; unidadeStr = ultima.unidade;
+      valorUnit = qtd ? ultima.valor / qtd : ultima.valor;
+    }
+    setUltimoPrecoInfo({ valorUnit, qtd, unidade: unidadeStr, data: ultima.criadoEm, valorTotal });
+  };
+
   const onDescricaoChange = (val) => {
     setDescricao(val);
     if (tipo==='pagar') {
       const mp = (ctx.materiasPrimas||[]).find(m=>m.nome.toLowerCase()===val.toLowerCase());
       if (mp && mp.unidadePadrao) setUnidade(mp.unidadePadrao);
+      computeUltimoPreco(val);
     }
   };
 
@@ -4564,7 +4589,7 @@ function ContaModal({ ctx, initTipo, conta }) {
           {tipo==='pagar' && !multiMode && showMpSugg && mpFiltradas.length>0 && (
             <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'white',border:`1px solid ${C.border}`,borderRadius:12,boxShadow:'0 8px 20px rgba(0,0,0,0.12)',zIndex:20,maxHeight:180,overflowY:'auto'}}>
               {mpFiltradas.map((n,i)=>(
-                <div key={n} onClick={()=>{onDescricaoChange(n);setShowMpSugg(false);}}
+                <div key={n} onClick={()=>{onDescricaoChange(n);setShowMpSugg(false);computeUltimoPreco(n);}}
                   style={{padding:'10px 14px',fontSize:14,cursor:'pointer',borderBottom:i<mpFiltradas.length-1?`1px solid ${C.border}`:'none'}}>
                   {n}
                 </div>
@@ -4572,6 +4597,28 @@ function ContaModal({ ctx, initTipo, conta }) {
             </div>
           )}
         </div>
+
+        {/* Último preço pago */}
+        {tipo==='pagar' && !multiMode && ultimoPrecoInfo && (
+          <div style={{background:'#fffbeb',border:'1px solid #fde68a',borderRadius:12,padding:'10px 14px',marginBottom:14,display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
+            <div>
+              <div style={{fontSize:11,fontWeight:700,color:'#b45309',letterSpacing:'0.4px'}}>ÚLTIMO PREÇO PAGO · {fmtDate(ultimoPrecoInfo.data)}</div>
+              <div style={{fontSize:14,fontWeight:800,color:'#92400e',marginTop:2}}>
+                {ultimoPrecoInfo.qtd
+                  ? <>{fmtBRL(ultimoPrecoInfo.valorUnit)}/{ultimoPrecoInfo.unidade||'un'} <span style={{fontWeight:500,fontSize:12,color:'#b45309'}}>· {ultimoPrecoInfo.qtd} {ultimoPrecoInfo.unidade||'un'} = {fmtBRL(ultimoPrecoInfo.valorTotal)}</span></>
+                  : fmtBRL(ultimoPrecoInfo.valorTotal)
+                }
+              </div>
+            </div>
+            <button onClick={()=>{
+              setValor(String(ultimoPrecoInfo.valorTotal));
+              if (ultimoPrecoInfo.qtd) setQuantidade(String(ultimoPrecoInfo.qtd));
+              if (ultimoPrecoInfo.unidade) setUnidade(ultimoPrecoInfo.unidade);
+            }} style={{background:'#f59e0b',border:'none',borderRadius:10,color:'white',padding:'7px 12px',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap',flexShrink:0}}>
+              Usar este
+            </button>
+          </div>
+        )}
 
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:14}}>
           <div>
