@@ -388,6 +388,7 @@ function App({ currentUserEmail, onLogout }) {
   const [showCfg,  setShowCfg]  = useState(false);
   const [cloudStatus, setCloudStatus] = useState('idle'); // idle|syncing|ok|error
   const [contas,        setContas]        = useState(()=>db.get('fp_contas',[]));
+  const [nfsSaida,      setNfsSaida]      = useState(()=>db.get('fp_nfs_saida',[]));
   const [catsPagar,     setCatsPagar]     = useState(()=>db.get('fp_cats_pagar', CATS_P_DEFAULT));
   const [unidadesMedida,setUnidadesMedida]= useState(()=>db.get('fp_unidades', UNIDADES_DEFAULT));
   const [fornecedores,  setFornecedores]  = useState(()=>db.get('fp_fornecedores', []));
@@ -439,6 +440,7 @@ function App({ currentUserEmail, onLogout }) {
   useEffect(()=>{ if(initDone.current) db.set('fp_products', products); }, [products]);
   useEffect(()=>{ if(initDone.current) db.set('fp_opening_bal', openBal); }, [openBal]);
   useEffect(()=>{ if(initDone.current) db.set('fp_contas',       contas);       }, [contas]);
+  useEffect(()=>{ if(initDone.current) db.set('fp_nfs_saida',    nfsSaida);     }, [nfsSaida]);
   useEffect(()=>{ if(initDone.current) db.set('fp_cats_pagar',   catsPagar);    }, [catsPagar]);
   useEffect(()=>{ if(initDone.current) db.set('fp_unidades',    unidadesMedida);}, [unidadesMedida]);
   useEffect(()=>{ if(initDone.current) db.set('fp_fornecedores',    fornecedores);    }, [fornecedores]);
@@ -478,6 +480,7 @@ function App({ currentUserEmail, onLogout }) {
         fp_fornecedores:fornecedores, fp_clientes:clientes, fp_materias_primas:materiasPrimas,
         fp_estoque:estoqueData, fp_estoque_hist:estoqueHist, fp_sabores:sabores,
         fp_cats_receber:catsReceber, fp_cats_in:catsIn, fp_cats_out:catsOut,
+        fp_nfs_saida:nfsSaida,
         fp_sheet_id:sheetId, fp_opening_bal:openBal,
         _exportedAt:new Date().toISOString(), _version:2,
       };
@@ -572,6 +575,10 @@ function App({ currentUserEmail, onLogout }) {
   const addCliente = c => setClientes(p=>[{...c,id:genId(),criadoEm:today()},...p]);
   const updCliente = (id,d) => setClientes(p=>p.map(c=>c.id===id?{...c,...d}:c));
   const delCliente = id => setClientes(p=>p.filter(c=>c.id!==id));
+  // NFs de Saída
+  const addNfSaida = nf => setNfsSaida(p=>[{...nf, id:nf.id||genId(), criadoEm:today()}, ...p]);
+  const updNfSaida = (id,d) => setNfsSaida(p=>p.map(n=>n.id===id?{...n,...d}:n));
+  const delNfSaida = id => setNfsSaida(p=>p.filter(n=>n.id!==id));
   const addMateriaPrima = m => setMateriasPrimas(p=>[{...m,id:genId(),criadoEm:today()},...p]);
   const updMateriaPrima = (id,d) => setMateriasPrimas(p=>p.map(m=>m.id===id?{...m,...d}:m));
   const delMateriaPrima = id => setMateriasPrimas(p=>p.filter(m=>m.id!==id));
@@ -778,6 +785,7 @@ function App({ currentUserEmail, onLogout }) {
       'fp_estoque_hist': setEstoqueHist, 'fp_sabores': setSabores,
       'fp_cats_receber': setCatsReceber,
       'fp_cats_in': setCatsIn, 'fp_cats_out': setCatsOut,
+      'fp_nfs_saida': setNfsSaida,
     };
     const CS = {
       'fp_sheet_id': v => setSheetId(typeof v==='string'?v:''),
@@ -935,7 +943,7 @@ function App({ currentUserEmail, onLogout }) {
     return () => clearInterval(id);
   }, [sheetId]);
 
-  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, unpaidOrder, paidEvent, contas, addConta, updConta, pagarConta, delConta, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus, newCardapioCount, catsPagar, setCatsPagar, catsReceber, setCatsReceber, catsIn, setCatsIn, catsOut, setCatsOut, unidadesMedida, setUnidadesMedida, fornecedores, addFornecedor, updFornecedor, delFornecedor, clientes, addCliente, updCliente, delCliente, materiasPrimas, addMateriaPrima, updMateriaPrima, delMateriaPrima, estoqueData, estoqueHist, ajustarEstoque, debitarEstoquePedido, reporEstoquePedido, delHistoricoEstoque, sabores, addSabor, updSabor, delSabor, currentUserEmail, onLogout };
+  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, unpaidOrder, paidEvent, contas, addConta, updConta, pagarConta, delConta, nfsSaida, addNfSaida, updNfSaida, delNfSaida, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus, newCardapioCount, catsPagar, setCatsPagar, catsReceber, setCatsReceber, catsIn, setCatsIn, catsOut, setCatsOut, unidadesMedida, setUnidadesMedida, fornecedores, addFornecedor, updFornecedor, delFornecedor, clientes, addCliente, updCliente, delCliente, materiasPrimas, addMateriaPrima, updMateriaPrima, delMateriaPrima, estoqueData, estoqueHist, ajustarEstoque, debitarEstoquePedido, reporEstoquePedido, delHistoricoEstoque, sabores, addSabor, updSabor, delSabor, currentUserEmail, onLogout };
 
   const TABS = [
     {id:'dashboard',   lbl:'Início',   icon:I.home},
@@ -956,7 +964,10 @@ function App({ currentUserEmail, onLogout }) {
       <button onClick={()=>open('add_order')} style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 13px',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5,fontFamily:'inherit'}}>{I.plus('white',15)} Pedido</button>
     </div>;
     if (tab==='events')  return <button onClick={()=>open('add_event')} style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 13px',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5,fontFamily:'inherit'}}>{I.plus('white',15)} Evento</button>;
-    if (tab==='contas')  return <button onClick={()=>open('add_conta')} style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 13px',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5,fontFamily:'inherit'}}>{I.plus('white',15)} Conta</button>;
+    if (tab==='contas')  return <div style={{display:'flex',gap:6}}>
+      <button onClick={()=>open('add_nf_saida')} style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 12px',fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>📄 NF Saída</button>
+      <button onClick={()=>open('add_conta')} style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 12px',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5,fontFamily:'inherit'}}>{I.plus('white',15)} Conta</button>
+    </div>;
     return null;
   };
 
@@ -1053,6 +1064,7 @@ function App({ currentUserEmail, onLogout }) {
       {modal==='edit_order' && <OrderModal   ctx={ctx} order={mData}/>}
       {modal==='add_event'  && <EventModal   ctx={ctx} event={mData}/>}
       {modal==='add_conta'  && <ContaModal   ctx={ctx} initTipo={mData?.tipo||'receber'} conta={mData?.id?mData:null}/>}
+      {modal==='add_nf_saida' && <NfSaidaModal ctx={ctx} nf={mData?.id?mData:null}/>}
       {modal==='pagar_conta' && <PagamentoModal ctx={ctx} conta={mData}/>}
       {modal==='view_order' && <OrderDetail  ctx={ctx} order={mData}/>}
       {modal==='view_event' && <EventDetail  ctx={ctx} event={mData}/>}
@@ -3346,7 +3358,7 @@ function BackupSection({ ctx }) {
     'fp_trans','fp_orders','fp_events','fp_products','fp_contas',
     'fp_cats_pagar','fp_unidades','fp_fornecedores','fp_clientes','fp_materias_primas',
     'fp_estoque','fp_estoque_hist','fp_sabores','fp_cats_receber','fp_cats_in','fp_cats_out',
-    'fp_sheet_id','fp_opening_bal',
+    'fp_nfs_saida','fp_sheet_id','fp_opening_bal',
   ];
 
   const lastAutoBackup = localStorage.getItem('fp_last_auto_backup');
@@ -3927,7 +3939,7 @@ function Contas({ ctx }) {
   return (
     <div>
       {/* Summary hero */}
-      <div style={{background:`linear-gradient(135deg,${accent},${tipo==='receber'?'#1e5c3a':'#a61e14'})`,borderRadius:22,padding:'20px',marginBottom:14,boxShadow:`0 6px 24px ${tipo==='receber'?'rgba(42,125,79,0.3)':'rgba(200,37,24,0.3)'}`}}>
+      {tipo==='nf' ? null : <div style={{background:`linear-gradient(135deg,${accent},${tipo==='receber'?'#1e5c3a':'#a61e14'})`,borderRadius:22,padding:'20px',marginBottom:14,boxShadow:`0 6px 24px ${tipo==='receber'?'rgba(42,125,79,0.3)':'rgba(200,37,24,0.3)'}`}}>
         <div style={{fontSize:11,color:'rgba(255,255,255,0.7)',fontWeight:700,letterSpacing:'0.8px',marginBottom:4}}>
           {tipo==='receber' ? 'TOTAL A RECEBER' : 'TOTAL A PAGAR'}
         </div>
@@ -3952,23 +3964,34 @@ function Contas({ ctx }) {
             <div style={{fontSize:16,fontWeight:800,color:'rgba(255,255,255,0.6)'}}>{pagas.length}</div>
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* Type chips */}
-      <div style={{display:'flex',gap:8,marginBottom:14}}>
-        {[['receber','📥 A Receber'],['pagar','📤 A Pagar']].map(([k,l])=>(
+      <div style={{display:'flex',gap:6,marginBottom:14,flexWrap:'wrap'}}>
+        {[['receber','📥 A Receber'],['pagar','📤 A Pagar'],['nf','📄 NF Saída']].map(([k,l])=>(
           <button key={k} className="chip" onClick={()=>setTipo(k)}
-            style={{background:tipo===k?(k==='receber'?C.green:C.red):'white',
-              color:tipo===k?'white':C.text2,border:`1px solid ${tipo===k?(k==='receber'?C.green:C.red):C.border}`,fontSize:13,padding:'8px 18px'}}>
+            style={{background:tipo===k?(k==='receber'?C.green:k==='pagar'?C.red:'#7c3aed'):'white',
+              color:tipo===k?'white':C.text2,border:`1px solid ${tipo===k?(k==='receber'?C.green:k==='pagar'?C.red:'#7c3aed'):C.border}`,fontSize:13,padding:'8px 14px'}}>
             {l}
           </button>
         ))}
-        <button onClick={()=>ctx.open('add_conta',{tipo})}
-          style={{marginLeft:'auto',background:'transparent',border:`1.5px solid ${accent}`,borderRadius:20,padding:'8px 14px',color:accent,fontWeight:700,fontSize:13,cursor:'pointer',display:'flex',alignItems:'center',gap:4,fontFamily:'inherit'}}>
-          {I.plus(accent,14)} Nova
-        </button>
+        {tipo!=='nf' && (
+          <button onClick={()=>ctx.open('add_conta',{tipo})}
+            style={{marginLeft:'auto',background:'transparent',border:`1.5px solid ${accent}`,borderRadius:20,padding:'8px 14px',color:accent,fontWeight:700,fontSize:13,cursor:'pointer',display:'flex',alignItems:'center',gap:4,fontFamily:'inherit'}}>
+            {I.plus(accent,14)} Nova
+          </button>
+        )}
+        {tipo==='nf' && (
+          <button onClick={()=>ctx.open('add_nf_saida')}
+            style={{marginLeft:'auto',background:'transparent',border:'1.5px solid #7c3aed',borderRadius:20,padding:'8px 14px',color:'#7c3aed',fontWeight:700,fontSize:13,cursor:'pointer',display:'flex',alignItems:'center',gap:4,fontFamily:'inherit'}}>
+            {I.plus('#7c3aed',14)} Nova NF
+          </button>
+        )}
       </div>
 
+      {tipo==='nf' && <NfSaidaList ctx={ctx}/>}
+
+      {tipo!=='nf' && <>
       {/* View toggle */}
       <div style={{display:'flex',gap:8,marginBottom:14}}>
         {[['lista','📋 Lista'],['calendario','📅 Calendário']].map(([k,l])=>(
@@ -4214,6 +4237,135 @@ function Contas({ ctx }) {
         )}
       </>}
       </>}
+      </>}
+    </div>
+  );
+}
+
+// ── NF SAÍDA LIST ──────────────────────────────────────────────────────────
+function NfSaidaList({ ctx }) {
+  const [nfDetalhe, setNfDetalhe] = React.useState(null);
+  const nfs = (ctx.nfsSaida || []);
+
+  const totalEmAberto = nfs.reduce((s,nf) => {
+    const conta = (ctx.contas || []).find(c => c.origemId === nf.id && c.tipo === 'receber');
+    return s + (conta && !conta.pago ? nf.total : 0);
+  }, 0);
+
+  const delNf = (nf) => {
+    // Remove a NF e a conta a receber vinculada
+    ctx.delNfSaida(nf.id);
+    const conta = (ctx.contas || []).find(c => c.origemId === nf.id && c.tipo === 'receber');
+    if (conta) ctx.delConta(conta.id);
+    if (nfDetalhe && nfDetalhe.id === nf.id) setNfDetalhe(null);
+  };
+
+  return (
+    <div>
+      {/* Hero NFs */}
+      <div style={{background:'linear-gradient(135deg,#7c3aed,#5b21b6)',borderRadius:22,padding:'20px',marginBottom:14,boxShadow:'0 6px 24px rgba(124,58,237,0.25)'}}>
+        <div style={{fontSize:11,color:'rgba(255,255,255,0.7)',fontWeight:700,letterSpacing:'0.8px',marginBottom:4}}>TOTAL EM ABERTO</div>
+        <div style={{fontSize:36,fontWeight:900,color:'white',letterSpacing:'-1.5px',lineHeight:1.1,marginBottom:12}}>{fmtBRL(totalEmAberto)}</div>
+        <div style={{display:'flex',gap:24}}>
+          <div><div style={{fontSize:10,color:'rgba(255,255,255,0.6)',fontWeight:700}}>NOTAS EMITIDAS</div><div style={{fontSize:16,fontWeight:800,color:'white'}}>{nfs.length}</div></div>
+        </div>
+      </div>
+
+      {nfs.length === 0 ? (
+        <div style={{textAlign:'center',padding:'40px 20px'}}>
+          <div style={{fontSize:40,marginBottom:12}}>🧾</div>
+          <div style={{fontWeight:800,fontSize:16,marginBottom:6}}>Nenhuma NF emitida</div>
+          <div style={{fontSize:13,color:C.text2}}>Toque em "+ Nova NF" para registrar uma nota fiscal de saída</div>
+        </div>
+      ) : (
+        nfs.map(nf => {
+          const conta = (ctx.contas || []).find(c => c.origemId === nf.id && c.tipo === 'receber');
+          const recebido = conta?.pago;
+          return (
+            <div key={nf.id} className="card" style={{marginBottom:10,border:`1.5px solid ${recebido?C.border:'#ede9fe'}`}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+                <div style={{flex:1,marginRight:10}}>
+                  <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4,flexWrap:'wrap'}}>
+                    <span style={{fontWeight:800,fontSize:15}}>NF {nf.numero || '—'}</span>
+                    {recebido
+                      ? <span className="badge" style={{background:'#f0fdf4',color:C.green,fontSize:10}}>✅ Recebido</span>
+                      : <span className="badge" style={{background:'#ede9fe',color:'#7c3aed',fontSize:10}}>⏳ Pendente</span>}
+                  </div>
+                  <div style={{fontSize:13,fontWeight:600,marginBottom:2}}>{nf.clienteNome || '—'}</div>
+                  <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
+                    <span className="badge" style={{background:'#f5f5f5',color:C.text2,fontSize:10}}>📅 {fmtDate(nf.dataEmissao)}</span>
+                    {nf.vencimento && <span className="badge" style={{background:'#f5f5f5',color:C.text2,fontSize:10}}>Venc: {fmtDate(nf.vencimento)}</span>}
+                    <span className="badge" style={{background:'#ede9fe',color:'#7c3aed',fontSize:10}}>{(nf.itens||[]).length} item(ns)</span>
+                  </div>
+                </div>
+                <div style={{textAlign:'right',flexShrink:0}}>
+                  <div style={{fontWeight:900,fontSize:16,color:'#7c3aed'}}>{fmtBRL(nf.total)}</div>
+                  <div style={{display:'flex',gap:6,marginTop:8,justifyContent:'flex-end'}}>
+                    <button onClick={()=>setNfDetalhe(nf)}
+                      style={{background:'#ede9fe',border:'none',borderRadius:10,padding:'7px 12px',cursor:'pointer',fontSize:12,fontWeight:700,color:'#7c3aed',fontFamily:'inherit'}}>
+                      Ver
+                    </button>
+                    {!recebido && conta && (
+                      <button onClick={()=>ctx.open('pagar_conta', conta)}
+                        style={{background:C.green,border:'none',borderRadius:10,color:'white',padding:'7px 10px',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
+                        Receber
+                      </button>
+                    )}
+                    <button onClick={()=>delNf(nf)}
+                      style={{background:'transparent',border:`1px solid ${C.border}`,borderRadius:10,color:C.red,padding:'7px 10px',cursor:'pointer',display:'flex',alignItems:'center',fontFamily:'inherit'}}>
+                      {I.trash(C.red,13)}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })
+      )}
+
+      {/* Modal de detalhe NF */}
+      {nfDetalhe && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.45)',zIndex:1000,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={()=>setNfDetalhe(null)}>
+          <div style={{background:'white',borderRadius:'22px 22px 0 0',padding:24,width:'100%',maxWidth:520,maxHeight:'85vh',overflowY:'auto',paddingBottom:40}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:18}}>
+              <div style={{fontWeight:800,fontSize:17}}>📄 NF {nfDetalhe.numero || '—'}</div>
+              <button onClick={()=>setNfDetalhe(null)} style={{background:'#f0ebe4',border:'none',borderRadius:20,width:32,height:32,cursor:'pointer',fontSize:16,fontFamily:'inherit'}}>×</button>
+            </div>
+            <div style={{background:'#fafafa',borderRadius:14,padding:14,marginBottom:12}}>
+              <div style={{fontSize:11,color:C.text2,fontWeight:700,marginBottom:4,textTransform:'uppercase',letterSpacing:'0.5px'}}>Cliente</div>
+              <div style={{fontWeight:700,fontSize:15}}>{nfDetalhe.clienteNome}</div>
+              {nfDetalhe.clienteTipo && <div style={{fontSize:12,color:C.text2,marginTop:2}}>{nfDetalhe.clienteTipo==='pj'?'Pessoa Jurídica':'Pessoa Física'}</div>}
+            </div>
+            <div style={{background:'#fafafa',borderRadius:14,padding:14,marginBottom:12}}>
+              <div style={{fontSize:11,color:C.text2,fontWeight:700,marginBottom:8,textTransform:'uppercase',letterSpacing:'0.5px'}}>Itens faturados</div>
+              {(nfDetalhe.itens||[]).map((it,i)=>(
+                <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:13,paddingBottom:6,borderBottom:i<nfDetalhe.itens.length-1?`1px solid ${C.border}`:'none',marginBottom:6}}>
+                  <div><div style={{fontWeight:600}}>{it.nome}</div><div style={{fontSize:11,color:C.text2}}>{it.qty} un × {fmtBRL(it.valorUnit)}</div></div>
+                  <div style={{fontWeight:700}}>{fmtBRL(it.total)}</div>
+                </div>
+              ))}
+              <div style={{display:'flex',justifyContent:'space-between',paddingTop:8,borderTop:`1px solid ${C.border}`,marginTop:4}}>
+                <span style={{fontWeight:700}}>Total</span>
+                <span style={{fontWeight:900,color:'#7c3aed'}}>{fmtBRL(nfDetalhe.total)}</span>
+              </div>
+            </div>
+            <div style={{background:'#fafafa',borderRadius:14,padding:14,marginBottom:12}}>
+              <div style={{fontSize:11,color:C.text2,fontWeight:700,marginBottom:8,textTransform:'uppercase',letterSpacing:'0.5px'}}>Datas</div>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:13,marginBottom:4}}><span style={{color:C.text2}}>Emissão</span><span style={{fontWeight:600}}>{fmtDate(nfDetalhe.dataEmissao)}</span></div>
+              {nfDetalhe.vencimento && <div style={{display:'flex',justifyContent:'space-between',fontSize:13}}><span style={{color:C.text2}}>Vencimento</span><span style={{fontWeight:600}}>{fmtDate(nfDetalhe.vencimento)}</span></div>}
+            </div>
+            {nfDetalhe.obs && (
+              <div style={{background:'#fafafa',borderRadius:14,padding:14,marginBottom:12}}>
+                <div style={{fontSize:11,color:C.text2,fontWeight:700,marginBottom:4,textTransform:'uppercase',letterSpacing:'0.5px'}}>Observações</div>
+                <div style={{fontSize:13}}>{nfDetalhe.obs}</div>
+              </div>
+            )}
+            <button onClick={()=>delNf(nfDetalhe)} style={{width:'100%',background:'transparent',border:`1px solid ${C.border}`,borderRadius:12,padding:12,color:'#ccc',cursor:'pointer',fontFamily:'inherit',fontSize:13}}>
+              Excluir NF
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -4587,6 +4739,233 @@ function ContaModal({ ctx, initTipo, conta }) {
             cursor:ok?'pointer':'default',fontSize:15,fontFamily:'inherit'}}>
           {editing?'Salvar Alterações':'Salvar Conta'}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ── NF SAÍDA MODAL ─────────────────────────────────────────────────────────
+function NfSaidaModal({ ctx, nf }) {
+  const { close } = ctx;
+  const editing = !!nf;
+
+  // Vencimento default: hoje + 30 dias
+  const defaultVenc = () => {
+    const d = new Date(); d.setDate(d.getDate()+30);
+    return d.toISOString().split('T')[0];
+  };
+
+  const [numero,       setNumero]       = useState(nf?.numero || '');
+  const [dataEmissao,  setDataEmissao]  = useState(nf?.dataEmissao || today());
+  const [vencimento,   setVencimento]   = useState(nf?.vencimento || defaultVenc());
+  const [clienteId,    setClienteId]    = useState(nf?.clienteId || '');
+  const [clienteNome,  setClienteNome]  = useState(nf?.clienteNome || '');
+  const [clienteFiltro,setClienteFiltro]= useState('');
+  const [showClienteDrop, setShowClienteDrop] = useState(false);
+  const [itens,        setItens]        = useState(nf?.itens || [{ nome:'', qty:'', valorUnit:'', total:0 }]);
+  const [obs,          setObs]          = useState(nf?.obs || '');
+  const [showEstoqueNome, setShowEstoqueNome] = useState(null); // idx of item showing suggestions
+
+  const toNum = v => parseFloat(String(v||'').replace(',','.')) || 0;
+  const total = itens.reduce((s,it)=>s+toNum(it.total),0);
+
+  const clientes = ctx.clientes || [];
+  const clientesFiltrados = clientes.filter(c => {
+    const q = clienteFiltro.toLowerCase();
+    return !q || (c.nome||'').toLowerCase().includes(q) || (c.razaoSocial||'').toLowerCase().includes(q);
+  }).slice(0,8);
+
+  const estoqueNomes = Object.keys(ctx.estoqueData || {});
+  const produtosFiltrados = (idx) => {
+    const q = (itens[idx]?.nome||'').toLowerCase();
+    return estoqueNomes.filter(n=>n.toLowerCase().includes(q)).slice(0,8);
+  };
+
+  const selecionarCliente = (c) => {
+    setClienteId(c.id);
+    setClienteNome(c.nome);
+    setClienteFiltro(c.nome);
+    setShowClienteDrop(false);
+  };
+
+  const updateItem = (idx, patch) => {
+    setItens(prev => prev.map((it,i) => {
+      if (i!==idx) return it;
+      const next = {...it, ...patch};
+      if (patch.qty !== undefined || patch.valorUnit !== undefined) {
+        next.total = toNum(next.qty) * toNum(next.valorUnit);
+      }
+      return next;
+    }));
+  };
+
+  const addItem = () => setItens(p=>[...p,{nome:'',qty:'',valorUnit:'',total:0}]);
+  const removeItem = idx => setItens(p=>p.filter((_,i)=>i!==idx));
+
+  const itensValidos = itens.filter(it=>it.nome.trim() && toNum(it.qty)>0 && toNum(it.valorUnit)>0);
+  const ok = clienteNome.trim() && itensValidos.length > 0;
+
+  const save = () => {
+    if (!ok) return;
+    const nfId = genId();
+    const itensFinais = itensValidos.map(it=>({
+      nome: it.nome.trim(),
+      qty: toNum(it.qty),
+      valorUnit: toNum(it.valorUnit),
+      total: toNum(it.total),
+    }));
+    const totalFinal = itensFinais.reduce((s,it)=>s+it.total,0);
+    const nfData = {
+      id: nfId,
+      numero: numero.trim(),
+      dataEmissao,
+      vencimento,
+      clienteId,
+      clienteNome: clienteNome.trim(),
+      clienteTipo: clientes.find(c=>c.id===clienteId)?.tipo || 'pj',
+      itens: itensFinais,
+      total: totalFinal,
+      obs: obs.trim(),
+    };
+    ctx.addNfSaida(nfData);
+
+    // Cria conta a receber vinculada
+    ctx.addConta({
+      tipo: 'receber',
+      descricao: `NF Saída${numero?' #'+numero:''} — ${clienteNome.trim()}`,
+      valor: totalFinal,
+      vencimento,
+      categoria: 'Vendas',
+      cliente: clienteNome.trim(),
+      notaFiscal: numero.trim(),
+      quantidade: null, unidade: null, itens: null,
+      origemTipo: 'nf_saida',
+      origemId: nfId,
+      pago: false, pagoEm: null,
+    });
+
+    // Debita estoque para cada item
+    itensFinais.forEach(it => {
+      ctx.ajustarEstoque(it.nome, -it.qty, `NF Saída${numero?' #'+numero:''}`, 'saida');
+    });
+
+    close();
+  };
+
+  return (
+    <div className="overlay" onClick={close}>
+      <div className="sheet" onClick={e=>e.stopPropagation()}>
+        <div className="sheet-handle"/>
+        <div style={{fontWeight:800,fontSize:18,marginBottom:18}}>{editing?'Editar NF':'Nova NF de Saída'}</div>
+
+        {/* Número NF e data */}
+        <div style={{display:'flex',gap:10,marginBottom:14}}>
+          <div style={{flex:1}}>
+            <label className="label" style={{marginBottom:4}}>Número da NF</label>
+            <input className="input" placeholder="Ex: 001234" value={numero} onChange={e=>setNumero(e.target.value)} style={{marginBottom:0}}/>
+          </div>
+          <div style={{flex:1}}>
+            <label className="label" style={{marginBottom:4}}>Data de emissão</label>
+            <input className="input" type="date" value={dataEmissao} onChange={e=>setDataEmissao(e.target.value)} style={{marginBottom:0}}/>
+          </div>
+        </div>
+
+        {/* Cliente */}
+        <label className="label" style={{marginBottom:4}}>Cliente *</label>
+        <div style={{position:'relative',marginBottom:14}}>
+          <input className="input" placeholder="Buscar cliente cadastrado..." value={clienteFiltro}
+            onChange={e=>{setClienteFiltro(e.target.value);setClienteNome(e.target.value);setClienteId('');setShowClienteDrop(true);}}
+            onFocus={()=>setShowClienteDrop(true)}
+            onBlur={()=>setTimeout(()=>setShowClienteDrop(false),180)}
+            style={{marginBottom:0}}/>
+          {showClienteDrop && clientesFiltrados.length>0 && (
+            <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'white',border:`1px solid ${C.border}`,borderRadius:12,boxShadow:'0 8px 20px rgba(0,0,0,0.12)',zIndex:20,maxHeight:200,overflowY:'auto'}}>
+              {clientesFiltrados.map(c=>(
+                <div key={c.id} onMouseDown={()=>selecionarCliente(c)}
+                  style={{padding:'10px 14px',fontSize:14,cursor:'pointer',borderBottom:`1px solid ${C.border}`}}>
+                  <div style={{fontWeight:600}}>{c.nome}</div>
+                  {c.razaoSocial && <div style={{fontSize:11,color:C.text2}}>{c.razaoSocial}</div>}
+                  <div style={{fontSize:11,color:C.text2}}>{c.tipo==='pj'?'PJ':'PF'}{c.cnpj?' · CNPJ '+c.cnpj:c.cpf?' · CPF '+c.cpf:''}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Itens */}
+        <label className="label" style={{marginBottom:6}}>Itens faturados *</label>
+        {itens.map((it,idx)=>(
+          <div key={idx} style={{background:'#fafaf8',borderRadius:14,padding:12,marginBottom:8,border:`1px solid ${C.border}`}}>
+            <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}>
+              <span style={{fontWeight:700,fontSize:12,color:C.text2}}>Item {idx+1}</span>
+              {itens.length>1 && (
+                <button onClick={()=>removeItem(idx)} style={{marginLeft:'auto',background:'transparent',border:'none',cursor:'pointer',color:C.red,fontSize:18,lineHeight:1,padding:'0 4px',fontFamily:'inherit'}}>×</button>
+              )}
+            </div>
+            {/* Nome produto */}
+            <div style={{position:'relative',marginBottom:8}}>
+              <input className="input" placeholder="Produto (ex: Pizza Grande)" value={it.nome}
+                onChange={e=>{updateItem(idx,{nome:e.target.value});setShowEstoqueNome(idx);}}
+                onFocus={()=>setShowEstoqueNome(idx)}
+                onBlur={()=>setTimeout(()=>setShowEstoqueNome(null),180)}
+                style={{marginBottom:0}}/>
+              {showEstoqueNome===idx && produtosFiltrados(idx).length>0 && (
+                <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'white',border:`1px solid ${C.border}`,borderRadius:12,boxShadow:'0 8px 20px rgba(0,0,0,0.12)',zIndex:20,maxHeight:160,overflowY:'auto'}}>
+                  {produtosFiltrados(idx).map(n=>(
+                    <div key={n} onMouseDown={()=>updateItem(idx,{nome:n})}
+                      style={{padding:'8px 14px',fontSize:13,cursor:'pointer',borderBottom:`1px solid ${C.border}`}}>
+                      {n} <span style={{fontSize:11,color:C.text2}}>· estoque: {ctx.estoqueData[n]}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {/* Qty e valor */}
+            <div style={{display:'flex',gap:8}}>
+              <div style={{flex:1}}>
+                <label className="label" style={{marginBottom:3,fontSize:11}}>Quantidade</label>
+                <input className="input" placeholder="Ex: 2" value={it.qty}
+                  onChange={e=>updateItem(idx,{qty:e.target.value})}
+                  style={{marginBottom:0}}/>
+              </div>
+              <div style={{flex:1}}>
+                <label className="label" style={{marginBottom:3,fontSize:11}}>Vlr unitário (R$)</label>
+                <input className="input" placeholder="Ex: 45,00" value={it.valorUnit}
+                  onChange={e=>updateItem(idx,{valorUnit:e.target.value})}
+                  style={{marginBottom:0}}/>
+              </div>
+              <div style={{flex:1,display:'flex',flexDirection:'column',justifyContent:'flex-end'}}>
+                <div style={{fontSize:11,color:C.text2,fontWeight:700,marginBottom:3}}>SUBTOTAL</div>
+                <div style={{fontWeight:800,fontSize:15,color:'#7c3aed'}}>{fmtBRL(toNum(it.total)||toNum(it.qty)*toNum(it.valorUnit))}</div>
+              </div>
+            </div>
+          </div>
+        ))}
+        <button onClick={addItem} style={{width:'100%',background:'transparent',border:`1.5px dashed ${'#c4b5fd'}`,borderRadius:12,padding:'10px',color:'#7c3aed',fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:'inherit',marginBottom:14}}>
+          + Adicionar item
+        </button>
+
+        {/* Vencimento */}
+        <label className="label" style={{marginBottom:4}}>Vencimento (para conta a receber)</label>
+        <input className="input" type="date" value={vencimento} onChange={e=>setVencimento(e.target.value)} style={{marginBottom:14}}/>
+
+        {/* Observações */}
+        <label className="label" style={{marginBottom:4}}>Observações (opcional)</label>
+        <input className="input" placeholder="Ex: Fatura referente ao evento de..." value={obs} onChange={e=>setObs(e.target.value)} style={{marginBottom:18}}/>
+
+        {/* Total e salvar */}
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',background:'#ede9fe',borderRadius:14,padding:'12px 16px',marginBottom:16}}>
+          <span style={{fontWeight:700,color:'#7c3aed'}}>Total da NF</span>
+          <span style={{fontWeight:900,fontSize:20,color:'#7c3aed'}}>{fmtBRL(total)}</span>
+        </div>
+
+        <button onClick={save} disabled={!ok}
+          style={{width:'100%',background:ok?'#7c3aed':'#e5e7eb',border:'none',borderRadius:14,padding:'15px',color:'white',fontSize:16,fontWeight:800,cursor:ok?'pointer':'default',fontFamily:'inherit'}}>
+          {editing ? 'Salvar alterações' : '🧾 Emitir NF e lançar recebível'}
+        </button>
+        <div style={{fontSize:11,color:C.text2,textAlign:'center',marginTop:8}}>
+          Ao salvar: cria conta a receber e debita o estoque automaticamente
+        </div>
       </div>
     </div>
   );
