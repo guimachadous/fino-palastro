@@ -4677,6 +4677,24 @@ function ContaModal({ ctx, initTipo, conta }) {
             <label className="label" style={{marginBottom:6}}>Itens da compra</label>
             {itens.map((it,idx)=>{
               const itFiltradas = mpNomes.filter(n=>n.toLowerCase().includes((it.nome||'').toLowerCase())).slice(0,8);
+              const nomeNormItem = (it.nome||'').toLowerCase().trim();
+              const ultimoItem = (() => {
+                if (!nomeNormItem) return null;
+                const cands = (ctx.contas||[]).filter(c => {
+                  if (c.tipo !== 'pagar') return false;
+                  if ((c.descricao||'').toLowerCase().trim() === nomeNormItem) return true;
+                  if (c.itens && c.itens.some(ci=>(ci.nome||'').toLowerCase().trim()===nomeNormItem)) return true;
+                  return false;
+                }).sort((a,b)=>(b.criadoEm||'')>(a.criadoEm||'')?1:-1);
+                if (!cands.length) return null;
+                const ult = cands[0];
+                let qtd=null, uni=null, vtotal=ult.valor, vunit=null;
+                if (ult.itens && ult.itens.length) {
+                  const ci = ult.itens.find(ci=>(ci.nome||'').toLowerCase().trim()===nomeNormItem);
+                  if (ci) { qtd=ci.quantidade; vtotal=ci.valor; uni=ci.unidade; vunit=qtd?ci.valor/qtd:ci.valor; }
+                } else { qtd=ult.quantidade; uni=ult.unidade; vunit=qtd?ult.valor/qtd:ult.valor; }
+                return {qtd, uni, vtotal, vunit, data:ult.criadoEm};
+              })();
               return (
                 <div key={idx} style={{border:`1px solid ${C.border}`,borderRadius:12,padding:10,marginBottom:8}}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
@@ -4702,6 +4720,26 @@ function ContaModal({ ctx, initTipo, conta }) {
                       </div>
                     )}
                   </div>
+                  {ultimoItem && (
+                    <div style={{background:'#fffbeb',border:'1px solid #fde68a',borderRadius:8,padding:'6px 10px',marginBottom:8,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
+                      <div style={{minWidth:0}}>
+                        <div style={{fontSize:10,fontWeight:700,color:'#b45309'}}>ÚLTIMO PREÇO · {fmtDate(ultimoItem.data)}</div>
+                        <div style={{fontSize:12,fontWeight:800,color:'#92400e',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                          {ultimoItem.qtd
+                            ? <>{fmtBRL(ultimoItem.vunit)}/{ultimoItem.uni||'un'} &middot; {ultimoItem.qtd} {ultimoItem.uni||'un'} = {fmtBRL(ultimoItem.vtotal)}</>
+                            : fmtBRL(ultimoItem.vtotal)
+                          }
+                        </div>
+                      </div>
+                      <button onMouseDown={e=>{e.preventDefault();updateItem(idx,{
+                        quantidade: ultimoItem.qtd!=null ? String(ultimoItem.qtd) : it.quantidade,
+                        unidade: ultimoItem.uni || it.unidade,
+                        valor: String(ultimoItem.vtotal),
+                      });}} style={{background:'#f59e0b',border:'none',borderRadius:8,color:'white',padding:'5px 10px',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'inherit',flexShrink:0}}>
+                        Usar
+                      </button>
+                    </div>
+                  )}
                   <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
                     <input className="input" type="number" inputMode="decimal" placeholder="Qtd"
                       value={it.quantidade} onChange={e=>updateItem(idx,{quantidade:e.target.value})} style={{marginBottom:0}}/>
