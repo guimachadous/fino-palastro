@@ -966,6 +966,7 @@ function App({ currentUserEmail, onLogout }) {
     </div>;
     if (tab==='events')  return <button onClick={()=>open('add_event')} style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 13px',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5,fontFamily:'inherit'}}>{I.plus('white',15)} Evento</button>;
     if (tab==='contas')  return <div style={{display:'flex',gap:6}}>
+      <button onClick={()=>open('boletos_relatorio')} style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 12px',fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>💳 Boletos</button>
       <button onClick={()=>open('add_nf_saida')} style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 12px',fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>📄 NF Saída</button>
       <button onClick={()=>open('add_conta')} style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 12px',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5,fontFamily:'inherit'}}>{I.plus('white',15)} Conta</button>
     </div>;
@@ -1066,6 +1067,7 @@ function App({ currentUserEmail, onLogout }) {
       {modal==='add_event'  && <EventModal   ctx={ctx} event={mData}/>}
       {modal==='add_conta'  && <ContaModal   ctx={ctx} initTipo={mData?.tipo||'receber'} conta={mData?.id?mData:null}/>}
       {modal==='add_nf_saida' && <NfSaidaModal ctx={ctx} nf={mData?.id?mData:null}/>}
+      {modal==='boletos_relatorio' && <BoletosModal ctx={ctx}/>}
       {modal==='pagar_conta' && <PagamentoModal ctx={ctx} conta={mData}/>}
       {modal==='view_order' && <OrderDetail  ctx={ctx} order={mData}/>}
       {modal==='view_event' && <EventDetail  ctx={ctx} event={mData}/>}
@@ -4418,6 +4420,7 @@ function ContaModal({ ctx, initTipo, conta }) {
   const [itens,       setItens]       = useState(conta?.itens && conta.itens.length ? conta.itens.map(it=>({...it})) : []);
   const [multiMode,   setMultiMode]   = useState(!!(conta?.itens && conta.itens.length));
   const [openItemIdx, setOpenItemIdx] = useState(null);
+  const [codigoBarras,setCodigoBarras]= useState(conta?.codigoBarras || '');
 
   const cats = tipo==='pagar' ? ctx.catsPagar : ctx.catsReceber;
 
@@ -4510,6 +4513,7 @@ function ContaModal({ ctx, initTipo, conta }) {
         valor: totalItens,
         vencimento, categoria:categoria||cats[0],
         cliente:cliente.trim(), notaFiscal:notaFiscal.trim(),
+        codigoBarras: codigoBarras.trim(),
         quantidade: null, unidade: null,
         itens: itensValidos.map(it => ({
           nome: it.nome.trim(), quantidade: toNum(it.quantidade), unidade: it.unidade||'', valor: toNum(it.valor),
@@ -4525,6 +4529,7 @@ function ContaModal({ ctx, initTipo, conta }) {
       tipo, descricao:descricao.trim(), valor:parseFloat(valor.replace(',','.'))||0,
       vencimento, categoria:categoria||cats[0],
       cliente:cliente.trim(), notaFiscal:notaFiscal.trim(),
+      codigoBarras: codigoBarras.trim(),
       quantidade: quantidade ? parseFloat(quantidade.replace(',','.')) : null,
       unidade: unidade || null,
       itens: null,
@@ -4844,7 +4849,16 @@ function ContaModal({ ctx, initTipo, conta }) {
 
         <label className="label">Nota Fiscal (opcional)</label>
         <input className="input" placeholder="Número da NF"
-          value={notaFiscal} onChange={e=>setNotaFiscal(e.target.value)} style={{marginBottom:22}}/>
+          value={notaFiscal} onChange={e=>setNotaFiscal(e.target.value)} style={{marginBottom:14}}/>
+
+        {tipo==='pagar' && (
+          <>
+            <label className="label">Código de Barras do Boleto (opcional)</label>
+            <input className="input" placeholder="Cole o código aqui..."
+              value={codigoBarras} onChange={e=>setCodigoBarras(e.target.value)}
+              style={{marginBottom:22,fontFamily:'monospace',fontSize:12,letterSpacing:'0.5px'}}/>
+          </>
+        )}
 
         <button onClick={save} disabled={!ok}
           style={{width:'100%',background:ok?'linear-gradient(135deg,'+accent+','+(tipo==='receber'?'#166534':'#991b1b')+')':'#e5e7eb',
@@ -4852,6 +4866,122 @@ function ContaModal({ ctx, initTipo, conta }) {
             cursor:ok?'pointer':'default',fontSize:15,fontFamily:'inherit'}}>
           {editing?'Salvar Alterações':'Salvar Conta'}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ── BOLETOS MODAL ──────────────────────────────────────────────────────────
+function BoletosModal({ ctx }) {
+  const { close } = ctx;
+  const [filtro, setFiltro] = useState('hoje'); // 'hoje' | 'semana' | 'aberto'
+  const [copiado, setCopiado] = useState(null); // id da conta copiada
+
+  const td = today();
+  const fimSemana = (() => { const d = new Date(td); d.setDate(d.getDate()+6); return d.toISOString().split('T')[0]; })();
+
+  const contas = (ctx.contas||[])
+    .filter(c => c.tipo==='pagar' && !c.pago)
+    .filter(c => {
+      if (filtro==='hoje')   return c.vencimento <= td;
+      if (filtro==='semana') return c.vencimento <= fimSemana;
+      return true; // 'aberto'
+    })
+    .sort((a,b) => (a.vencimento||'') > (b.vencimento||'') ? 1 : -1);
+
+  const comBoleto = contas.filter(c => c.codigoBarras);
+
+  const copiar = (texto, id) => {
+    navigator.clipboard.writeText(texto).then(() => {
+      setCopiado(id);
+      setTimeout(() => setCopiado(null), 2000);
+    });
+  };
+
+  const copiarTudo = () => {
+    const linhas = comBoleto.map(c =>
+      `${c.descricao} — ${fmtBRL(c.valor)} — Venc: ${fmtDate(c.vencimento)}\n${c.codigoBarras}`
+    ).join('\n\n');
+    navigator.clipboard.writeText(linhas).then(() => {
+      setCopiado('all');
+      setTimeout(() => setCopiado(null), 2500);
+    });
+  };
+
+  const totalAberto = contas.reduce((s,c) => s+c.valor, 0);
+
+  return (
+    <div className="overlay" onClick={close}>
+      <div className="sheet" onClick={e=>e.stopPropagation()}>
+        <div className="sheet-handle"/>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+          <div style={{fontWeight:800,fontSize:18}}>💳 Boletos a Pagar</div>
+          <button onClick={close} style={{background:'none',border:'none',cursor:'pointer',padding:4}}>{I.x(C.text2,20)}</button>
+        </div>
+
+        {/* Filtro */}
+        <div style={{display:'flex',gap:8,marginBottom:16}}>
+          {[['hoje','Vencidos/Hoje'],['semana','Esta semana'],['aberto','Todos em aberto']].map(([k,l])=>(
+            <button key={k} className="chip" onClick={()=>setFiltro(k)}
+              style={{background:filtro===k?C.red:'white',color:filtro===k?'white':C.text2,
+                border:`1px solid ${filtro===k?C.red:C.border}`,fontSize:11,padding:'6px 10px'}}>
+              {l}
+            </button>
+          ))}
+        </div>
+
+        {/* Resumo */}
+        <div style={{background:'#fff5f5',border:'1px solid #fca5a5',borderRadius:12,padding:'10px 14px',marginBottom:14,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div>
+            <div style={{fontSize:11,color:C.red,fontWeight:700}}>TOTAL A PAGAR</div>
+            <div style={{fontSize:18,fontWeight:900,color:C.red}}>{fmtBRL(totalAberto)}</div>
+          </div>
+          <div style={{textAlign:'right'}}>
+            <div style={{fontSize:11,color:C.text2}}>{contas.length} conta{contas.length!==1?'s':''} · {comBoleto.length} com boleto</div>
+            {comBoleto.length>1 && (
+              <button onClick={copiarTudo} style={{marginTop:4,background:copiado==='all'?C.green:C.red,border:'none',borderRadius:8,color:'white',padding:'5px 12px',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
+                {copiado==='all'?'✓ Copiado!':'📋 Copiar todos'}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Lista */}
+        <div style={{maxHeight:420,overflowY:'auto'}}>
+          {contas.length===0 ? (
+            <div style={{textAlign:'center',padding:'32px 20px',color:C.text2}}>
+              <div style={{fontSize:36,marginBottom:8}}>🎉</div>
+              <div style={{fontWeight:700}}>Nenhuma conta a pagar neste período!</div>
+            </div>
+          ) : contas.map(c => (
+            <div key={c.id} style={{border:`1px solid ${c.vencimento<td?'#fca5a5':C.border}`,borderRadius:12,padding:'10px 12px',marginBottom:8,background:c.vencimento<td?'#fff5f5':'white'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:4}}>
+                <div style={{flex:1,minWidth:0,marginRight:8}}>
+                  <div style={{fontWeight:700,fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.descricao}</div>
+                  <div style={{fontSize:11,color:C.text2,marginTop:2}}>
+                    {c.cliente && <span>{c.cliente} · </span>}
+                    Venc: {fmtDate(c.vencimento)}
+                    {c.vencimento < td && <span style={{color:C.red,fontWeight:700}}> ⚠️ VENCIDO</span>}
+                  </div>
+                </div>
+                <div style={{fontWeight:800,fontSize:15,color:C.red,flexShrink:0}}>{fmtBRL(c.valor)}</div>
+              </div>
+              {c.codigoBarras ? (
+                <div style={{marginTop:6}}>
+                  <div style={{background:'#f8f8f8',border:`1px solid ${C.border}`,borderRadius:8,padding:'6px 10px',fontFamily:'monospace',fontSize:10,letterSpacing:'0.5px',wordBreak:'break-all',color:'#374151',marginBottom:6}}>
+                    {c.codigoBarras}
+                  </div>
+                  <button onClick={()=>copiar(c.codigoBarras,c.id)}
+                    style={{background:copiado===c.id?C.green:C.red,border:'none',borderRadius:8,color:'white',padding:'5px 14px',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'inherit',width:'100%'}}>
+                    {copiado===c.id?'✓ Copiado!':'📋 Copiar código de barras'}
+                  </button>
+                </div>
+              ) : (
+                <div style={{marginTop:6,fontSize:11,color:'#9ca3af',fontStyle:'italic'}}>Sem código de barras cadastrado</div>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
