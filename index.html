@@ -1630,7 +1630,10 @@ function ImportBlocoModal({ ctx }) {
 // ── ORDERS ───────────────────────────────────────────────────────────────
 function Orders({ ctx }) {
   const [sf,setSf]=useState('active');
-  const list=ctx.orders.filter(o=>sf==='active'?['pending','confirmed'].includes(o.status):sf==='delivered'?o.status==='delivered':true).sort((a,b)=>b.createdAt>a.createdAt?1:-1);
+  const [busca,setBusca]=useState('');
+  const list=ctx.orders.filter(o=>sf==='active'?['pending','confirmed'].includes(o.status):sf==='delivered'?o.status==='delivered':true)
+    .filter(o=>!busca.trim()||(o.client||'').toLowerCase().includes(busca.toLowerCase().trim()))
+    .sort((a,b)=>b.createdAt>a.createdAt?1:-1);
 
   const CatTag = ({cat})=>(
     <span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:20,background:cat==='grande'?'#fff5f5':'#fffbeb',color:cat==='grande'?C.red:'#b45309',border:`1px solid ${cat==='grande'?'#fca5a5':'#fde68a'}`}}>
@@ -1640,10 +1643,16 @@ function Orders({ ctx }) {
 
   return (
     <div>
-      <div className="scroll-row" style={{marginBottom:14}}>
+      <div className="scroll-row" style={{marginBottom:10}}>
         {[['active','Ativos'],['delivered','Entregues'],['all','Todos']].map(([k,l])=>(
           <button key={k} className="chip" onClick={()=>setSf(k)} style={{background:sf===k?C.red:'white',color:sf===k?'white':C.text2,border:`1px solid ${sf===k?C.red:C.border}`}}>{l}</button>
         ))}
+      </div>
+      <div style={{position:'relative',marginBottom:14}}>
+        <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',fontSize:15,color:C.text2,pointerEvents:'none'}}>🔍</span>
+        <input className="input" placeholder="Buscar por nome..." value={busca} onChange={e=>setBusca(e.target.value)}
+          style={{paddingLeft:36,marginBottom:0}}/>
+        {busca&&<button onClick={()=>setBusca('')} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:16,color:C.text2,padding:0,lineHeight:1}}>×</button>}
       </div>
 
       {list.length===0?(
