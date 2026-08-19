@@ -1445,7 +1445,7 @@ function parseBlocoDeNotas(text) {
           clientRaw = clientRaw.slice(0, clientRaw.length - pm[0].length).trim();
         }
       }
-      cur = { numeroPedido: parseInt(hdr[1]), client: clientRaw, whatsapp, items: [], total: 0, delivery: 0 };
+      cur = { numeroPedido: parseInt(hdr[1]), client: clientRaw, whatsapp, items: [], total: 0, delivery: 0, descontoVal: 0, descontoTipo: 'valor' };
       continue;
     }
     if (!cur) continue;
@@ -1465,13 +1465,28 @@ function parseBlocoDeNotas(text) {
     // "R$600,00"                       → só subtotal
     if (raw.includes('R$') || raw.match(/[\d]+[,.][\d]{2}/)) {
       const toNum = s => parseFloat((s||'').replace(/\./g,'').replace(',','.')) || 0;
+      // Formato: R$385,00 -10% = R$346,50  (desconto percentual com total final explícito)
+      const fmtDesc1 = raw.match(/R\$\s*([\d.,]+)\s*-\s*(\d+(?:[.,]\d+)?)\s*%\s*=\s*R\$\s*([\d.,]+)/i);
+      // Formato: R$385,00 -10%             (desconto percentual, calcula o final)
+      const fmtDesc2 = !fmtDesc1 && raw.match(/R\$\s*([\d.,]+)\s*-\s*(\d+(?:[.,]\d+)?)\s*%/i);
       // Formato: R$175,00 + 7,00 de entrega  (entrega como valor adicional)
       const fmt1 = raw.match(/R\$\s*([\d.,]+)\s*\+\s*R?\$?\s*([\d.,]+)\s*de\s*entrega/i);
       // Formato: R$680,00 + entrega = R$695,00  (total com entrega no final)
       const fmt2 = raw.match(/R\$\s*([\d.,]+)\s*\+\s*entrega\s*=\s*R\$\s*([\d.,]+)/i);
       // Formato: R$175,00 + entrega 7,00  (entrega após a palavra)
       const fmt3 = raw.match(/R\$\s*([\d.,]+)\s*\+\s*entrega\s+R?\$?\s*([\d.,]+)/i);
-      if (fmt1) {
+      if (fmtDesc1) {
+        const sub = toNum(fmtDesc1[1]), fin = toNum(fmtDesc1[3]);
+        cur.total = fin;
+        cur.descontoVal = Math.round((sub - fin)*100)/100;
+        cur.descontoTipo = 'pct';
+      } else if (fmtDesc2) {
+        const sub = toNum(fmtDesc2[1]), pct = toNum(fmtDesc2[2]);
+        const fin = Math.round(sub * (1 - pct/100) * 100) / 100;
+        cur.total = fin;
+        cur.descontoVal = Math.round((sub - fin)*100)/100;
+        cur.descontoTipo = 'pct';
+      } else if (fmt1) {
         cur.total    = toNum(fmt1[1]);
         cur.delivery = toNum(fmt1[2]);
       } else if (fmt2) {
@@ -1516,6 +1531,8 @@ function ImportBlocoModal({ ctx }) {
         items: p.items,
         total: p.total,
         delivery: p.delivery,
+        desconto: p.descontoVal || 0,
+        descontoTipo: p.descontoTipo || 'valor',
         numeroPedido: p.numeroPedido,
         source: 'bloco_notas',
       });
@@ -1576,6 +1593,7 @@ function ImportBlocoModal({ ctx }) {
                     {p.items.map((it,j)=><span key={j} style={{marginRight:8}}>{it.qty}x {it.productName}</span>)}
                   </div>
                   {p.delivery>0&&<div style={{fontSize:11,color:C.text2,marginTop:2}}>+R$ {p.delivery.toFixed(2).replace('.',',')} entrega</div>}
+                  {p.descontoVal>0&&<div style={{fontSize:11,color:'#dc2626',marginTop:2}}>🏷️ − {fmtBRL(p.descontoVal)} de desconto</div>}
                   {p.whatsapp&&<div style={{fontSize:11,color:'#059669',marginTop:2}}>📱 {p.whatsapp}</div>}
                 </div>
               ))}
