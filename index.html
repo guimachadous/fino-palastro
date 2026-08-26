@@ -1423,6 +1423,34 @@ function Finance({ ctx }) {
   );
 }
 
+// ── FUZZY MATCH DE SABOR ─────────────────────────────────────────────────
+// Resolve abreviações, "c/"→"com", prefixos parciais (ex: "ling" → "linguiça").
+function fuzzyMatchSabor(nome, sabores) {
+  if (!nome || !sabores?.length) return null;
+  const norm = s => (s||'').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g,'')  // tira acentos
+    .replace(/\bc\//g,'com').replace(/\bs\//g,'sem').replace(/\be\//g,'e')
+    .replace(/\s+/g,' ').trim();
+  const q = norm(nome);
+  if (!q) return null;
+  // 1. Match exato (normalizado)
+  let m = sabores.find(s => norm(s.nome) === q);
+  if (m) return m;
+  // 2. Token prefix: cada token do query é prefixo de algum token do alvo
+  //    ex: "ling" cobre "linguica", "marg" cobre "margherita"
+  const qToks = q.split(/\s+/).filter(t => t.length >= 2 && !/^\d+$/.test(t));
+  if (qToks.length) {
+    m = sabores.find(s => {
+      const tToks = norm(s.nome).split(/\s+/);
+      return qToks.every(qt => tToks.some(tt => tt.startsWith(qt) || qt.startsWith(tt)));
+    });
+    if (m) return m;
+  }
+  // 3. Substring simples como fallback
+  m = sabores.find(s => { const t=norm(s.nome); return t.includes(q) || q.includes(t); });
+  return m || null;
+}
+
 // ── IMPORTAR BLOCO DE NOTAS ──────────────────────────────────────────────
 function parseBlocoDeNotas(text) {
   const orders = [];
@@ -1455,7 +1483,8 @@ function parseBlocoDeNotas(text) {
     const item = raw.trim().match(/^-\s*\[.\]\s*(.+)$/);
     if (item) {
       let txt = item[1].trim().replace(/^-\s*/, '');
-      const qm = txt.match(/^(\d+)\s*[-–]?\s*(.+)$/);
+      // Aceita "2x calabreza", "2 calabreza", "2- calabreza", "2 – calabreza"
+      const qm = txt.match(/^(\d+)\s*[x×]?\s*[-–]?\s*(.+)$/i);
       if (qm) { cur.items.push({ productName: qm[2].trim(), qty: parseInt(qm[1]), unitPrice: 0 }); }
       else     { cur.items.push({ productName: txt, qty: 1, unitPrice: 0 }); }
       continue;
@@ -1519,18 +1548,35 @@ function ImportBlocoModal({ ctx }) {
   const analisar = () => {
     if (!texto.trim()) return;
     const parsed = parseBlocoDeNotas(texto);
-    setPreview(parsed.map(p => ({ ...p, duplicado: existingNums.has(p.numeroPedido) })));
+    setPreview(parsed.map(p => ({
+      ...p,
+      duplicado: existingNums.has(p.numeroPedido),
+      items: p.items.map(it => {
+        const sabor = fuzzyMatchSabor(it.productName, ctx.sabores);
+        return { ...it, _rawName: it.productName, _sabor: sabor || null };
+      }),
+    })));
   };
 
   const confirmar = () => {
     const novos = preview.filter(p => !p.duplicado);
     novos.forEach(p => {
+      const itemsFinais = p.items.map(it => {
+        const s = it._sabor;
+        return {
+          productId:   s?.id   || '',
+          productName: s?.nome || it._rawName || it.productName,
+          unitPrice:   it.unitPrice || s?.preco || 0,
+          cat:         it.cat || s?.cat || 'grande',
+          qty:         it.qty,
+        };
+      });
       ctx.addOrder({
         client: p.client,
         whatsapp: p.whatsapp || '',
         status: 'pending',
         paid: false,
-        items: p.items,
+        items: itemsFinais,
         total: p.total,
         delivery: p.delivery,
         desconto: p.descontoVal || 0,
@@ -1591,8 +1637,18 @@ function ImportBlocoModal({ ctx }) {
                       : <span style={{fontSize:12,fontWeight:800,color:C.red}}>R$ {(p.total+(p.delivery||0)).toFixed(2).replace('.',',')}</span>
                     }
                   </div>
-                  <div style={{fontSize:11,color:C.text2}}>
-                    {p.items.map((it,j)=><span key={j} style={{marginRight:8}}>{it.qty}x {it.productName}</span>)}
+                  <div style={{fontSize:11,marginTop:2}}>
+                    {p.items.map((it,j)=>(
+                      <span key={j} style={{marginRight:8,display:'inline-block'}}>
+                        <span style={{color:it._sabor?C.green:C.red,fontWeight:700}}>{it.qty}x </span>
+                        <span style={{color:it._sabor?C.text2:'#dc2626'}}>
+                          {it._sabor ? it._sabor.nome : (it._rawName||it.productName)}
+                          {it._sabor && it._sabor.nome.toLowerCase()!==(it._rawName||'').toLowerCase() &&
+                            <span style={{color:'#9ca3af',fontSize:10}}> ← {it._rawName}</span>}
+                          {!it._sabor && <span style={{fontSize:10}}> ⚠️ não reconhecido</span>}
+                        </span>
+                      </span>
+                    ))}
                   </div>
                   {p.delivery>0&&<div style={{fontSize:11,color:C.text2,marginTop:2}}>+R$ {p.delivery.toFixed(2).replace('.',',')} entrega</div>}
                   {p.descontoVal>0&&<div style={{fontSize:11,color:'#dc2626',marginTop:2}}>🏷️ − {fmtBRL(p.descontoVal)} de desconto</div>}
@@ -2128,16 +2184,15 @@ function OrderModal({ ctx, order }) {
   const [items,   setItems]   = useState(() => {
     if (!order?.items?.length) return [defaultItem];
     return order.items.map(i => {
-      // Tenta encontrar o sabor pelo nome (pedidos importados do bloco de notas não têm productId)
-      const nome = (i.productName || i.nome || '').toLowerCase().trim();
-      const sabor = allProds.find(p => p.nome.toLowerCase() === nome)
-                 || allProds.find(p => p.nome.toLowerCase().includes(nome) || nome.includes(p.nome.toLowerCase()));
+      // Primeiro tenta pelo productId já salvo; senão faz fuzzy match pelo nome
+      const byId = i.productId ? allProds.find(p => p.id === i.productId) : null;
+      const sabor = byId || fuzzyMatchSabor(i.productName || i.nome || '', allProds);
       return {
-        productId:   i.productId   || sabor?.id        || allProds[0]?.id,
-        productName: i.productName || i.nome           || sabor?.nome || allProds[0]?.nome,
-        qty:         i.qty         || 1,
-        unitPrice:   i.unitPrice   || i.price          || sabor?.preco || allProds[0]?.preco || 0,
-        cat:         i.cat         || sabor?.cat        || allProds[0]?.cat,
+        productId:   sabor?.id   || i.productId   || '',
+        productName: sabor?.nome || i.productName || i.nome || '',
+        qty:         i.qty       || 1,
+        unitPrice:   i.unitPrice || i.price || sabor?.preco || 0,
+        cat:         sabor?.cat  || i.cat   || allProds[0]?.cat || 'grande',
       };
     });
   });
