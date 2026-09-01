@@ -3263,6 +3263,24 @@ function RelatoriosView({ ctx }) {
     });
     return Object.values(agg).sort((a,b)=>b.valor-a.valor);
   })();
+  const gastosPeriodo = (() => {
+    const agg = {};
+    ctx.trans.filter(t=>inRange(t.date)&&t.type==='saida').forEach(t=>{
+      const cat=t.category||'Sem categoria';
+      if(!agg[cat])agg[cat]={total:0,count:0};
+      agg[cat].total+=t.amount; agg[cat].count+=1;
+    });
+    return Object.entries(agg).sort((a,b)=>b[1].total-a[1].total);
+  })();
+  const entradasPeriodo = (() => {
+    const agg = {};
+    ctx.trans.filter(t=>inRange(t.date)&&t.type==='entrada').forEach(t=>{
+      const cat=t.category||'Sem categoria';
+      if(!agg[cat])agg[cat]={total:0,count:0};
+      agg[cat].total+=t.amount; agg[cat].count+=1;
+    });
+    return Object.entries(agg).sort((a,b)=>b[1].total-a[1].total);
+  })();
   // ─────────────────────────────────────────────────────────────────────────
 
   const KPI = ({lbl,val,sub,c}) => (
@@ -3301,7 +3319,7 @@ function RelatoriosView({ ctx }) {
           </button>}
         </div>
         <div style={{display:'flex',borderBottom:`1px solid ${C.border}`,marginBottom:12}}>
-          {[['sabores','🍕 Vendas'],['mp','🥣 Consumo MP'],['compras','🛒 Compras MP']].map(([k,l])=>(
+          {[['sabores','🍕 Vendas'],['mp','🥣 Consumo MP'],['compras','🛒 Compras MP'],['categorias','💰 Categorias']].map(([k,l])=>(
             <button key={k} onClick={()=>setRelAba(k)}
               style={{flex:1,padding:'8px 4px',border:'none',background:'none',cursor:'pointer',fontSize:11,fontWeight:700,
                 color:relAba===k?C.red:C.text2,borderBottom:`2px solid ${relAba===k?C.red:'transparent'}`,
@@ -3368,6 +3386,64 @@ function RelatoriosView({ ctx }) {
               </div>
             </>
         )}
+
+        {relAba==='categorias'&&(()=>{
+          const maxSaida = gastosPeriodo.length ? gastosPeriodo[0][1].total : 1;
+          const maxEntrada = entradasPeriodo.length ? entradasPeriodo[0][1].total : 1;
+          const totalSaidas = gastosPeriodo.reduce((s,[,v])=>s+v.total,0);
+          const totalEntradas = entradasPeriodo.reduce((s,[,v])=>s+v.total,0);
+          const CatRow = ({nome, total, count, max, color}) => (
+            <div style={{marginBottom:10}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:3}}>
+                <span style={{fontSize:13,fontWeight:700}}>{nome}</span>
+                <div style={{textAlign:'right'}}>
+                  <span style={{fontSize:14,fontWeight:900,color}}>{fmtBRL(total)}</span>
+                  <span style={{fontSize:10,color:C.text2,marginLeft:6}}>{count} lanç.</span>
+                </div>
+              </div>
+              <div style={{background:'#f0f0f0',borderRadius:4,height:6,overflow:'hidden'}}>
+                <div style={{width:`${(total/max*100).toFixed(1)}%`,background:color,height:'100%',borderRadius:4,transition:'width 0.3s'}}/>
+              </div>
+            </div>
+          );
+          return (
+            <>
+              {/* Saídas */}
+              <div style={{marginBottom:12}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                  <span style={{fontSize:11,fontWeight:700,color:C.red,letterSpacing:'0.5px'}}>📤 SAÍDAS POR CATEGORIA</span>
+                  <span style={{fontSize:13,fontWeight:900,color:C.red}}>{fmtBRL(totalSaidas)}</span>
+                </div>
+                {gastosPeriodo.length===0
+                  ? <div style={{fontSize:12,color:C.text2,fontStyle:'italic',textAlign:'center',padding:'8px 0'}}>Nenhuma saída no período</div>
+                  : gastosPeriodo.map(([cat,{total,count}],i)=>(
+                    <CatRow key={i} nome={cat} total={total} count={count} max={maxSaida} color={C.red}/>
+                  ))
+                }
+              </div>
+              {/* Entradas */}
+              <div style={{borderTop:`1px solid ${C.border}`,paddingTop:12}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                  <span style={{fontSize:11,fontWeight:700,color:C.green,letterSpacing:'0.5px'}}>📥 ENTRADAS POR CATEGORIA</span>
+                  <span style={{fontSize:13,fontWeight:900,color:C.green}}>{fmtBRL(totalEntradas)}</span>
+                </div>
+                {entradasPeriodo.length===0
+                  ? <div style={{fontSize:12,color:C.text2,fontStyle:'italic',textAlign:'center',padding:'8px 0'}}>Nenhuma entrada no período</div>
+                  : entradasPeriodo.map(([cat,{total,count}],i)=>(
+                    <CatRow key={i} nome={cat} total={total} count={count} max={maxEntrada} color={C.green}/>
+                  ))
+                }
+              </div>
+              {/* Saldo do período */}
+              <div style={{borderTop:`2px solid ${C.border}`,marginTop:8,paddingTop:10,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <span style={{fontSize:13,fontWeight:700,color:C.text2}}>Saldo do período</span>
+                <span style={{fontSize:15,fontWeight:900,color:(totalEntradas-totalSaidas)>=0?C.green:C.red}}>
+                  {(totalEntradas-totalSaidas)>=0?'+':''}{fmtBRL(totalEntradas-totalSaidas)}
+                </span>
+              </div>
+            </>
+          );
+        })()}
       </div>
 
       <div style={{background:`linear-gradient(135deg,${C.red},${C.red2})`,borderRadius:18,padding:'16px 18px',marginBottom:14,color:'white'}}>
