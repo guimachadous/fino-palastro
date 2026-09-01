@@ -1289,12 +1289,136 @@ function Dashboard({ ctx }) {
 }
 
 // ── FINANCE ─────────────────────────────────────────────────────────────
+// ── EVOLUÇÃO DO CAIXA ──────────────────────────────────────────────────────
+function EvolucaoView({ ctx }) {
+  const [dataBusca, setDataBusca] = useState(today());
+
+  // Saldo ao INÍCIO de uma data (antes das transações daquele dia)
+  const saldoInicioData = (data) =>
+    (ctx.trans || []).filter(t => t.date < data)
+      .reduce((s, t) => s + (t.type==='entrada' ? t.amount : -t.amount), ctx.openBal || 0);
+
+  // Saldo ao FINAL de uma data (inclui transações do dia)
+  const saldoFimData = (data) =>
+    (ctx.trans || []).filter(t => t.date <= data)
+      .reduce((s, t) => s + (t.type==='entrada' ? t.amount : -t.amount), ctx.openBal || 0);
+
+  const saldoAtual = saldoFimData(today());
+  const saldoBusca = saldoInicioData(dataBusca);
+  const saldoBuscaColor = saldoBusca >= 0 ? C.green : C.red;
+
+  // Gera array dos últimos 60 dias
+  const pontos = [];
+  for (let i = 59; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const data = d.toISOString().split('T')[0];
+    pontos.push({ data, saldo: saldoFimData(data) });
+  }
+
+  // SVG mini-chart
+  const W = 340, H = 110, PAD_X = 4, PAD_Y = 12;
+  const vals = pontos.map(p => p.saldo);
+  const maxV = Math.max(...vals, 0);
+  const minV = Math.min(...vals, 0);
+  const range = (maxV - minV) || 1;
+  const cx = i => PAD_X + (i / (pontos.length - 1)) * (W - 2*PAD_X);
+  const cy = v => PAD_Y + (1 - (v - minV) / range) * (H - 2*PAD_Y);
+  const pathLine = pontos.map((p,i) => `${i===0?'M':'L'}${cx(i).toFixed(1)},${cy(p.saldo).toFixed(1)}`).join(' ');
+  const pathArea = pathLine + ` L${cx(pontos.length-1).toFixed(1)},${cy(0).toFixed(1)} L${cx(0).toFixed(1)},${cy(0).toFixed(1)} Z`;
+  const lineColor = saldoAtual >= 0 ? C.green : C.red;
+
+  // Últimas transações significativas
+  const ultTrans = (ctx.trans||[]).slice().sort((a,b)=>b.date>a.date?1:-1).slice(0,5);
+
+  // Variação de hoje
+  const inicioHoje = saldoInicioData(today());
+  const varHoje = saldoAtual - inicioHoje;
+
+  return (
+    <div>
+      {/* Card saldo atual */}
+      <div style={{background:'linear-gradient(135deg,#1f2937,#374151)',borderRadius:16,padding:'18px 16px',marginBottom:14,color:'white'}}>
+        <div style={{fontSize:10,fontWeight:700,letterSpacing:'1px',opacity:0.6,marginBottom:4}}>SALDO ATUAL DO CAIXA</div>
+        <div style={{fontSize:28,fontWeight:900}}>{fmtBRL(saldoAtual)}</div>
+        <div style={{marginTop:6,fontSize:12,opacity:0.75}}>
+          Hoje: {varHoje>=0?'+':''}{fmtBRL(varHoje)} &nbsp;·&nbsp; {pontos.filter(p=>p.saldo<0).length>0?'⚠️ dias negativos':' caixa positivo'}
+        </div>
+      </div>
+
+      {/* Gráfico 60 dias */}
+      <div className="card" style={{marginBottom:14,padding:'14px 12px'}}>
+        <div className="section-label" style={{marginBottom:10}}>Evolução — últimos 60 dias</div>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{width:'100%',overflow:'visible',display:'block'}}>
+          <defs>
+            <linearGradient id="gcAreaGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={lineColor} stopOpacity="0.25"/>
+              <stop offset="100%" stopColor={lineColor} stopOpacity="0.02"/>
+            </linearGradient>
+          </defs>
+          {/* Linha zero */}
+          {minV < 0 && <line x1={PAD_X} y1={cy(0).toFixed(1)} x2={W-PAD_X} y2={cy(0).toFixed(1)} stroke={C.red} strokeWidth="1" strokeDasharray="4,3" opacity="0.5"/>}
+          {/* Área */}
+          <path d={pathArea} fill="url(#gcAreaGrad)"/>
+          {/* Linha */}
+          <path d={pathLine} fill="none" stroke={lineColor} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>
+          {/* Ponto do dia atual */}
+          <circle cx={cx(pontos.length-1).toFixed(1)} cy={cy(saldoAtual).toFixed(1)} r="4" fill={lineColor} stroke="white" strokeWidth="1.5"/>
+        </svg>
+        {/* Labels X */}
+        <div style={{display:'flex',justifyContent:'space-between',marginTop:4}}>
+          {[0, 29, 59].map(i => (
+            <span key={i} style={{fontSize:9,color:C.text2}}>{fmtDate(pontos[i]?.data)}</span>
+          ))}
+        </div>
+      </div>
+
+      {/* Consulta de saldo por data */}
+      <div className="card" style={{marginBottom:14}}>
+        <div className="section-label" style={{marginBottom:10}}>Consultar saldo em data específica</div>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
+          <input type="date" value={dataBusca} onChange={e=>setDataBusca(e.target.value)}
+            style={{flex:1,fontSize:14,padding:'10px 12px',borderRadius:10,border:`1.5px solid ${C.border}`,fontFamily:'inherit',color:C.text,outline:'none'}}/>
+        </div>
+        <div style={{background:'#f8f8f8',borderRadius:12,padding:'12px 14px'}}>
+          <div style={{fontSize:11,color:C.text2,fontWeight:700,marginBottom:4}}>
+            SALDO NO INÍCIO DE {fmtDate(dataBusca).toUpperCase()}
+          </div>
+          <div style={{fontSize:26,fontWeight:900,color:saldoBuscaColor}}>{fmtBRL(saldoBusca)}</div>
+          <div style={{fontSize:11,color:C.text2,marginTop:4}}>
+            Saldo ao final do dia: <strong style={{color:saldoFimData(dataBusca)>=0?C.green:C.red}}>{fmtBRL(saldoFimData(dataBusca))}</strong>
+            &nbsp;· Movimentação: {fmtBRL(Math.abs(saldoFimData(dataBusca)-saldoBusca))}
+          </div>
+        </div>
+      </div>
+
+      {/* Maiores variações recentes */}
+      <div className="card">
+        <div className="section-label" style={{marginBottom:10}}>Últimos lançamentos</div>
+        {ultTrans.length===0
+          ? <div style={{color:C.text2,fontSize:13,textAlign:'center',padding:12}}>Nenhum lançamento ainda</div>
+          : ultTrans.map(t=>(
+            <div key={t.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:`1px solid ${C.border}`}}>
+              <div style={{minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.description||t.category}</div>
+                <div style={{fontSize:11,color:C.text2}}>{fmtDate(t.date)}</div>
+              </div>
+              <div style={{fontWeight:800,fontSize:13,color:t.type==='entrada'?C.green:C.red,flexShrink:0,marginLeft:8}}>
+                {t.type==='entrada'?'+':'-'}{fmtBRL(t.amount)}
+              </div>
+            </div>
+          ))}
+      </div>
+    </div>
+  );
+}
+
 function Finance({ ctx }) {
   const [period, setPeriod] = useState('month');
   const [typeF,  setTypeF]  = useState('all');
   const [customDe,  setCustomDe]  = useState('');
   const [customAte, setCustomAte] = useState('');
-  const isReports = period === 'reports';
+  const isReports  = period === 'reports';
+  const isHistorico = period === 'historico';
   const isCustom  = period === 'custom';
   const now = new Date();
   const cuts = {
@@ -1317,7 +1441,7 @@ function Finance({ ctx }) {
   const catMap = {};
   list.forEach(t=>{ if(!catMap[t.category])catMap[t.category]={in:0,out:0}; catMap[t.category][t.type==='entrada'?'in':'out']+=t.amount; });
 
-  const chips = [['today','Hoje'],['week','7 dias'],['month','Mês'],['custom','📅 Período'],['reports','📊 Relatórios']];
+  const chips = [['today','Hoje'],['week','7 dias'],['month','Mês'],['custom','📅 Período'],['historico','📈 Evolução'],['reports','📊 Relatórios']];
 
   return (
     <div>
@@ -1346,7 +1470,7 @@ function Finance({ ctx }) {
         </div>
       )}
 
-      {isReports ? <RelatoriosView ctx={ctx}/> : (
+      {isHistorico ? <EvolucaoView ctx={ctx}/> : isReports ? <RelatoriosView ctx={ctx}/> : (
         <div>
           {/* Summary */}
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:14}}>
