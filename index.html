@@ -400,6 +400,7 @@ function App({ currentUserEmail, onLogout }) {
   const [catsReceber,   setCatsReceber]   = useState(()=>db.get('fp_cats_receber', CATS_R_DEFAULT));
   const [catsIn,        setCatsIn]        = useState(()=>db.get('fp_cats_in', CATS_IN_DEFAULT));
   const [catsOut,       setCatsOut]       = useState(()=>db.get('fp_cats_out', CATS_OUT_DEFAULT));
+  const [catTipo,       setCatTipo]       = useState(()=>db.get('fp_cat_tipo', {})); // 'fixo'|'variavel'|''
   const [alertKey, setAlertKey] = useState('');
   const [newCardapioCount, setNewCardapioCount] = useState(0);
   const [notifPerm, setNotifPerm] = useState(()=> 'Notification' in window ? Notification.permission : 'unsupported');
@@ -462,6 +463,7 @@ function App({ currentUserEmail, onLogout }) {
   useEffect(()=>{ if(!catsReceber.includes('Venda Congelada')) setCatsReceber(p=>[...p.filter(c=>c!=='Outros'),'Venda Congelada','Outros']); },[]);
   useEffect(()=>{ if(initDone.current) db.set('fp_cats_in',      catsIn);       }, [catsIn]);
   useEffect(()=>{ if(initDone.current) db.set('fp_cats_out',     catsOut);      }, [catsOut]);
+  useEffect(()=>{ if(initDone.current) db.set('fp_cat_tipo',     catTipo);      }, [catTipo]);
 
   // ── AUTO-BACKUP DIÁRIO ─────────────────────────────────────────────────────
   // Uma vez por dia, após a sincronização com a nuvem, salva um snapshot
@@ -944,7 +946,7 @@ function App({ currentUserEmail, onLogout }) {
     return () => clearInterval(id);
   }, [sheetId]);
 
-  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, unpaidOrder, paidEvent, contas, addConta, updConta, pagarConta, delConta, nfsSaida, addNfSaida, updNfSaida, delNfSaida, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus, newCardapioCount, catsPagar, setCatsPagar, catsReceber, setCatsReceber, catsIn, setCatsIn, catsOut, setCatsOut, unidadesMedida, setUnidadesMedida, fornecedores, addFornecedor, updFornecedor, delFornecedor, clientes, addCliente, updCliente, delCliente, materiasPrimas, addMateriaPrima, updMateriaPrima, delMateriaPrima, estoqueData, estoqueHist, ajustarEstoque, debitarEstoquePedido, reporEstoquePedido, delHistoricoEstoque, sabores, addSabor, updSabor, delSabor, currentUserEmail, onLogout };
+  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, unpaidOrder, paidEvent, contas, addConta, updConta, pagarConta, delConta, nfsSaida, addNfSaida, updNfSaida, delNfSaida, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus, newCardapioCount, catsPagar, setCatsPagar, catsReceber, setCatsReceber, catsIn, setCatsIn, catsOut, setCatsOut, unidadesMedida, setUnidadesMedida, fornecedores, addFornecedor, updFornecedor, delFornecedor, clientes, addCliente, updCliente, delCliente, materiasPrimas, addMateriaPrima, updMateriaPrima, delMateriaPrima, estoqueData, estoqueHist, ajustarEstoque, debitarEstoquePedido, reporEstoquePedido, delHistoricoEstoque, sabores, addSabor, updSabor, delSabor, currentUserEmail, onLogout, catTipo, setCatTipo };
 
   const TABS = [
     {id:'dashboard',   lbl:'Início',   icon:I.home},
@@ -954,6 +956,7 @@ function App({ currentUserEmail, onLogout }) {
     {id:'contas',      lbl:'Contas',   icon:I.bill},
     {id:'estoque',     lbl:'Estoque',  icon:I.box},
     {id:'profits',     lbl:'Lucros',     icon:I.coin},
+    {id:'contabil',    lbl:'Contábil',   icon:()=>'📊'},
     {id:'relatorios',  lbl:'Relatórios', icon:I.chart},
     {id:'whatsapp',    lbl:'WhatsApp',   icon:I.wa},
   ];
@@ -1054,6 +1057,7 @@ function App({ currentUserEmail, onLogout }) {
         {tab==='profits'     && <Lucros      ctx={ctx}/>}
         {tab==='contas'      && <Contas      ctx={ctx}/>}
         {tab==='estoque'     && <Estoque       ctx={ctx}/>}
+        {tab==='contabil'    && <ContabilView   ctx={ctx}/>}
         {tab==='relatorios'  && <RelatoriosView ctx={ctx}/>}
         {tab==='whatsapp'    && <WhatsApp     ctx={ctx}/>}
       </div>
@@ -3201,6 +3205,241 @@ function Lucros({ ctx }) {
           <div style={{fontSize:40,marginBottom:12}}>💰</div>
           <div style={{fontWeight:700,fontSize:15,marginBottom:6}}>Nenhum pagamento esta semana</div>
           <div style={{fontSize:13}}>Quando pedidos ou eventos forem marcados como pagos, aparecerão aqui.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── CONTÁBIL VIEW ──────────────────────────────────────────────────────────
+function ContabilView({ ctx }) {
+  // usa o C global (red=accent, text=primary, text2=secondary, border, green, cream)
+  const R = v => 'R$ ' + (v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const pct = (v, total) => total ? ((v/total)*100).toFixed(1)+'%' : '—';
+
+  // ── Período: mês atual por padrão ──────────────────────────────────────
+  const now = new Date();
+  const mesAtualKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const [de,  setDe]  = useState(mesAtualKey+'-01');
+  const [ate, setAte] = useState(mesAtualKey+'-'+String(new Date(now.getFullYear(),now.getMonth()+1,0).getDate()).padStart(2,'0'));
+  const [aba, setAba] = useState('dre'); // 'dre' | 'classificar'
+
+  const inRange = d => {
+    const s = (d||'').slice(0,10);
+    if (de  && s < de)  return false;
+    if (ate && s > ate) return false;
+    return true;
+  };
+
+  // ── Receita = entradas do período ──────────────────────────────────────
+  const transIn  = (ctx.trans||[]).filter(t => t.type==='entrada' && inRange(t.date));
+  const transOut = (ctx.trans||[]).filter(t => t.type==='saida'   && inRange(t.date));
+  const receita  = transIn.reduce((s,t) => s+t.amount, 0);
+
+  // ── Agrupa entradas por categoria ─────────────────────────────────────
+  const recCats = {};
+  transIn.forEach(t => { const c=t.category||'Sem categoria'; recCats[c]=(recCats[c]||0)+t.amount; });
+
+  // ── Custos por tipo ───────────────────────────────────────────────────
+  const catTipo = ctx.catTipo || {};
+  const grupoOut = { variavel:[], fixo:[], nao:[] };
+  const aggOut = {};
+  transOut.forEach(t => {
+    const c = t.category||'Sem categoria';
+    aggOut[c] = (aggOut[c]||0) + t.amount;
+  });
+  Object.entries(aggOut).forEach(([cat, val]) => {
+    const tipo = catTipo[cat] || 'nao';
+    grupoOut[tipo === 'variavel' ? 'variavel' : tipo === 'fixo' ? 'fixo' : 'nao'].push({cat, val});
+  });
+  ['variavel','fixo','nao'].forEach(g => grupoOut[g].sort((a,b)=>b.val-a.val));
+
+  const totalVariavel = grupoOut.variavel.reduce((s,x)=>s+x.val,0);
+  const totalFixo     = grupoOut.fixo.reduce((s,x)=>s+x.val,0);
+  const totalNao      = grupoOut.nao.reduce((s,x)=>s+x.val,0);
+  const margem        = receita - totalVariavel;
+  const resultado     = margem  - totalFixo;
+
+  // ── Todas as categorias de saída já usadas ────────────────────────────
+  const todasCatsSaida = [...new Set((ctx.trans||[]).filter(t=>t.type==='saida').map(t=>t.category||'Sem categoria'))].sort();
+
+  // Cores para tipos
+  const tipoCor   = { fixo:'#3b82f6', variavel:'#f59e0b', nao:'#9ca3af' };
+  const tipoLabel = { fixo:'Fixo', variavel:'Variável', nao:'Não classificado' };
+
+  const DRELine = ({label, value, bold, indent, color, subline, pctVal, pctRef, bg}) => (
+    <div style={{display:'flex',alignItems:'center',padding:indent?'5px 12px 5px 28px':'7px 12px',
+      background:bg||'transparent',borderRadius:bg?8:0,marginBottom:bg?6:0}}>
+      <span style={{flex:1,fontSize:indent?13:14,fontWeight:bold?700:400,color:color||C.text2,fontStyle:subline?'italic':'normal'}}>
+        {label}
+      </span>
+      {pctVal!==undefined && pctRef &&
+        <span style={{fontSize:12,color:C.text2,marginRight:12,minWidth:50,textAlign:'right'}}>
+          {pct(pctVal, pctRef)}
+        </span>}
+      <span style={{fontSize:indent?13:bold?16:14,fontWeight:bold?700:500,color:color||C.text,minWidth:100,textAlign:'right'}}>
+        {R(value)}
+      </span>
+    </div>
+  );
+
+  const Divider = ({dashed}) => (
+    <div style={{borderTop:`1px ${dashed?'dashed':'solid'} ${C.border}`,margin:'6px 0'}}/>
+  );
+
+  return (
+    <div style={{paddingBottom:40}}>
+      {/* ── Header ── */}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
+        <h2 style={{margin:0,fontSize:18,fontWeight:700,color:C.text}}>📊 Contábil</h2>
+        <div style={{display:'flex',gap:6}}>
+          <button onClick={()=>setAba('dre')}
+            style={{padding:'6px 12px',borderRadius:8,border:'none',fontFamily:'inherit',fontSize:13,fontWeight:600,cursor:'pointer',
+              background:aba==='dre'?C.red:'transparent',color:aba==='dre'?'white':C.text2}}>
+            DRE
+          </button>
+          <button onClick={()=>setAba('classificar')}
+            style={{padding:'6px 12px',borderRadius:8,border:'none',fontFamily:'inherit',fontSize:13,fontWeight:600,cursor:'pointer',
+              background:aba==='classificar'?C.red:'transparent',color:aba==='classificar'?'white':C.text2}}>
+            ⚙️ Classificar
+          </button>
+        </div>
+      </div>
+
+      {/* ── Seletor de período ── */}
+      <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
+        <span style={{fontSize:13,color:C.text2}}>Período:</span>
+        <input type="date" value={de}  onChange={e=>setDe(e.target.value)}
+          style={{padding:'6px 10px',borderRadius:8,border:'1px solid '+C.border,background:'white',color:C.text,fontSize:13,fontFamily:'inherit'}}/>
+        <span style={{color:C.text2,fontSize:13}}>até</span>
+        <input type="date" value={ate} onChange={e=>setAte(e.target.value)}
+          style={{padding:'6px 10px',borderRadius:8,border:'1px solid '+C.border,background:'white',color:C.text,fontSize:13,fontFamily:'inherit'}}/>
+        {/* Atalhos de mês */}
+        {[0,-1,-2].map(offset=>{
+          const d=new Date(); d.setMonth(d.getMonth()+offset);
+          const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+          const ult=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();
+          const mDe=key+'-01', mAte=key+'-'+String(ult).padStart(2,'0');
+          const MESES=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+          const ativo=de===mDe&&ate===mAte;
+          return <button key={offset} onClick={()=>{setDe(mDe);setAte(mAte);}}
+            style={{padding:'5px 10px',borderRadius:8,border:'1px solid '+C.border,background:ativo?C.red:'white',
+              color:ativo?'white':C.text2,fontFamily:'inherit',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+            {MESES[d.getMonth()]+'/'+String(d.getFullYear()).slice(2)}
+          </button>;
+        })}
+      </div>
+
+      {/* ── DRE ── */}
+      {aba==='dre' && (
+        <div style={{background:'white',borderRadius:14,border:'1px solid '+C.border,overflow:'hidden'}}>
+          {/* Receita */}
+          <div style={{background:C.green+'22',padding:'10px 12px 4px'}}>
+            <span style={{fontSize:11,fontWeight:700,color:C.green,letterSpacing:1,textTransform:'uppercase'}}>Receita</span>
+          </div>
+          {transIn.length===0
+            ? <p style={{margin:'10px 12px',color:C.text2,fontSize:13}}>Nenhuma entrada no período.</p>
+            : Object.entries(recCats).sort((a,b)=>b[1]-a[1]).map(([c,v])=>
+                <DRELine key={c} label={c} value={v} indent pctVal={v} pctRef={receita}/>)}
+          <Divider/>
+          <DRELine label="(+) RECEITA BRUTA" value={receita} bold color={C.green}/>
+
+          <Divider dashed/>
+
+          {/* Custos Variáveis */}
+          <div style={{background:'#f59e0b22',padding:'10px 12px 4px'}}>
+            <span style={{fontSize:11,fontWeight:700,color:'#f59e0b',letterSpacing:1,textTransform:'uppercase'}}>Custos Variáveis</span>
+          </div>
+          {grupoOut.variavel.length===0
+            ? <p style={{margin:'10px 12px',color:C.text2,fontSize:13,fontStyle:'italic'}}>Nenhuma categoria variável classificada para o período.</p>
+            : grupoOut.variavel.map(({cat,val})=>
+                <DRELine key={cat} label={cat} value={val} indent pctVal={val} pctRef={receita}/>)}
+          <Divider/>
+          <DRELine label="(-) CUSTOS VARIÁVEIS" value={totalVariavel} bold color="#f59e0b"/>
+
+          <Divider dashed/>
+
+          {/* Margem de Contribuição */}
+          <DRELine label="(=) MARGEM DE CONTRIBUIÇÃO" value={margem} bold
+            color={margem>=0?'#22c55e':'#ef4444'}
+            pctVal={margem} pctRef={receita}
+            bg={margem>=0?'#22c55e18':'#ef444418'}/>
+
+          <Divider dashed/>
+
+          {/* Custos Fixos */}
+          <div style={{background:'#3b82f622',padding:'10px 12px 4px'}}>
+            <span style={{fontSize:11,fontWeight:700,color:'#3b82f6',letterSpacing:1,textTransform:'uppercase'}}>Custos Fixos</span>
+          </div>
+          {grupoOut.fixo.length===0
+            ? <p style={{margin:'10px 12px',color:C.text2,fontSize:13,fontStyle:'italic'}}>Nenhuma categoria fixa classificada para o período.</p>
+            : grupoOut.fixo.map(({cat,val})=>
+                <DRELine key={cat} label={cat} value={val} indent pctVal={val} pctRef={receita}/>)}
+          <Divider/>
+          <DRELine label="(-) CUSTOS FIXOS" value={totalFixo} bold color="#3b82f6"/>
+
+          <Divider dashed/>
+
+          {/* Resultado */}
+          <DRELine label="(=) RESULTADO OPERACIONAL" value={resultado} bold
+            color={resultado>=0?'#22c55e':'#ef4444'}
+            pctVal={resultado} pctRef={receita}
+            bg={resultado>=0?'#22c55e18':'#ef444418'}/>
+
+          {/* Não classificados (aviso) */}
+          {grupoOut.nao.length>0 && (
+            <>
+              <Divider dashed/>
+              <div style={{padding:'8px 12px 4px',background:'#9ca3af18'}}>
+                <span style={{fontSize:11,fontWeight:700,color:C.text2,letterSpacing:1,textTransform:'uppercase'}}>
+                  ⚠️ Não classificados (fora do DRE)
+                </span>
+              </div>
+              {grupoOut.nao.map(({cat,val})=>
+                <DRELine key={cat} label={cat} value={val} indent color={C.text2}/>)}
+              <div style={{padding:'4px 12px 10px'}}>
+                <span style={{fontSize:11,color:C.text2}}>
+                  Classifique essas categorias em "⚙️ Classificar" para incluí-las no DRE.
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── Classificar Categorias ── */}
+      {aba==='classificar' && (
+        <div>
+          <p style={{fontSize:13,color:C.text2,marginTop:0,marginBottom:14}}>
+            Clique em cada categoria para alternar entre <strong>Fixo</strong>, <strong>Variável</strong> e <strong>Não classificado</strong>. A classificação é salva automaticamente.
+          </p>
+          {todasCatsSaida.length===0 && (
+            <p style={{color:C.text2,fontSize:13}}>Nenhuma categoria de saída encontrada.</p>
+          )}
+          <div style={{display:'flex',flexDirection:'column',gap:8}}>
+            {todasCatsSaida.map(cat=>{
+              const tipo = ctx.catTipo[cat] || 'nao';
+              const nextTipo = tipo==='nao'?'fixo':tipo==='fixo'?'variavel':'nao';
+              const cor = tipoCor[tipo];
+              return (
+                <div key={cat} onClick={()=>ctx.setCatTipo(prev=>({...prev,[cat]:nextTipo}))}
+                  style={{display:'flex',alignItems:'center',justifyContent:'space-between',
+                    padding:'12px 14px',borderRadius:10,border:'2px solid '+cor,
+                    background:cor+'18',cursor:'pointer',transition:'all 0.15s'}}>
+                  <span style={{fontSize:14,fontWeight:500,color:C.text}}>{cat}</span>
+                  <span style={{fontSize:12,fontWeight:700,color:cor,background:cor+'30',
+                    padding:'3px 10px',borderRadius:20}}>
+                    {tipoLabel[tipo]}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          {todasCatsSaida.length>0 && (
+            <p style={{fontSize:12,color:C.text2,marginTop:12,textAlign:'center'}}>
+              Toque para alternar: Não classificado → Fixo → Variável → Não classificado
+            </p>
+          )}
         </div>
       )}
     </div>
