@@ -1548,31 +1548,71 @@ function Finance({ ctx }) {
 }
 
 // ── FUZZY MATCH DE SABOR ─────────────────────────────────────────────────
-// Resolve abreviações, "c/"→"com", prefixos parciais (ex: "ling" → "linguiça").
+// Resolve abreviações, typos, "c " → "com", prefixos parciais.
 function fuzzyMatchSabor(nome, sabores) {
   if (!nome || !sabores?.length) return null;
+
+  // Levenshtein para tolerância a typos
+  const lev = (a, b) => {
+    if (a === b) return 0;
+    const m = a.length, n = b.length;
+    if (!m) return n; if (!n) return m;
+    const row = Array.from({length: n+1}, (_,j) => j);
+    for (let i = 1; i <= m; i++) {
+      let prev = row[0]; row[0] = i;
+      for (let j = 1; j <= n; j++) {
+        const tmp = row[j];
+        row[j] = a[i-1] === b[j-1] ? prev : 1 + Math.min(prev, row[j], row[j-1]);
+        prev = tmp;
+      }
+    }
+    return row[n];
+  };
+
   const norm = s => (s||'').toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g,'')  // tira acentos
-    .replace(/\bc\//g,'com').replace(/\bs\//g,'sem').replace(/\be\//g,'e')
+    .normalize('NFD').replace(/[̀-ͯ]/g,'') // remove acentos corretamente
+    .replace(/\bc\/\b/g,'com').replace(/\bs\/\b/g,'sem') // "c/" → "com"
+    .replace(/\b([a-z])\b(?=\s+[a-z])/g, (_, c) => c==='c'?'com':c==='s'?'sem':c) // "c " → "com"
     .replace(/\s+/g,' ').trim();
+
+  // Pontuação de um par (query_tok, target_tok): 1=exato, >0=parcial, 0=sem match
+  const tokScore = (qt, tt) => {
+    if (tt.startsWith(qt) || qt.startsWith(tt)) return 1;
+    const maxLen = Math.max(qt.length, tt.length);
+    if (maxLen >= 4) {
+      const dist = lev(qt, tt);
+      const tol = Math.floor(maxLen / 4); // 4-5 chars→1, 6-7→1, 8+→2
+      if (dist <= tol) return 1 - dist / maxLen;
+    }
+    return 0;
+  };
+
+  // Pontuação total do match: fração dos tokens do query cobertos pelo alvo
+  const matchScore = (q, t) => {
+    const qToks = q.split(/\s+/).filter(x => x.length >= 2 && !/^\d+$/.test(x));
+    if (!qToks.length) return 0;
+    const tToks = t.split(/\s+/).filter(x => x.length >= 1);
+    const covered = qToks.filter(qt => tToks.some(tt => tokScore(qt, tt) > 0));
+    return covered.length / qToks.length;
+  };
+
   const q = norm(nome);
   if (!q) return null;
-  // 1. Match exato (normalizado)
-  let m = sabores.find(s => norm(s.nome) === q);
-  if (m) return m;
-  // 2. Token prefix: cada token do query é prefixo de algum token do alvo
-  //    ex: "ling" cobre "linguica", "marg" cobre "margherita"
-  const qToks = q.split(/\s+/).filter(t => t.length >= 2 && !/^\d+$/.test(t));
-  if (qToks.length) {
-    m = sabores.find(s => {
-      const tToks = norm(s.nome).split(/\s+/);
-      return qToks.every(qt => tToks.some(tt => tt.startsWith(qt) || qt.startsWith(tt)));
-    });
-    if (m) return m;
-  }
-  // 3. Substring simples como fallback
-  m = sabores.find(s => { const t=norm(s.nome); return t.includes(q) || q.includes(t); });
-  return m || null;
+
+  // Pontua todos os sabores e retorna o melhor acima do threshold
+  const results = sabores.map(s => {
+    const t = norm(s.nome);
+    let score = t === q ? 1.0 : 0;
+    if (!score) {
+      const ms = matchScore(q, t);
+      const substQ = t.includes(q) ? 0.85 : 0;
+      const substT = q.includes(t) && t.length >= 4 ? 0.7 : 0;
+      score = Math.max(ms, substQ, substT);
+    }
+    return { s, score };
+  }).filter(x => x.score >= 0.6).sort((a, b) => b.score - a.score);
+
+  return results.length ? results[0].s : null;
 }
 
 // ── IMPORTAR BLOCO DE NOTAS ──────────────────────────────────────────────
@@ -1609,8 +1649,10 @@ function parseBlocoDeNotas(text) {
       let txt = item[1].trim().replace(/^-\s*/, '');
       // Aceita "2x calabreza", "2 calabreza", "2- calabreza", "2 – calabreza"
       const qm = txt.match(/^(\d+)\s*[x×]?\s*[-–]?\s*(.+)$/i);
-      if (qm) { cur.items.push({ productName: qm[2].trim(), qty: parseInt(qm[1]), unitPrice: 0 }); }
-      else     { cur.items.push({ productName: txt, qty: 1, unitPrice: 0 }); }
+      // Strip trailing price (ex: "Calabrosa 50,00" → "Calabrosa")
+      const stripPrice = n => n.replace(/\s+(?:R\$\s*)?\d+(?:[,.]\d+)?\s*$/,'').trim();
+      if (qm) { cur.items.push({ productName: stripPrice(qm[2].trim()), qty: parseInt(qm[1]), unitPrice: 0 }); }
+      else     { cur.items.push({ productName: stripPrice(txt), qty: 1, unitPrice: 0 }); }
       continue;
     }
     // Total — suporta vários formatos:
