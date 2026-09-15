@@ -956,6 +956,7 @@ function App({ currentUserEmail, onLogout }) {
     {id:'contas',      lbl:'Contas',   icon:I.bill},
     {id:'estoque',     lbl:'Estoque',  icon:I.box},
     {id:'profits',     lbl:'Lucros',     icon:I.coin},
+    {id:'consultas',   lbl:'Consultas',  icon:()=>'🔍'},
     {id:'contabil',    lbl:'Contábil',   icon:()=>'📊'},
     {id:'relatorios',  lbl:'Relatórios', icon:I.chart},
     {id:'whatsapp',    lbl:'WhatsApp',   icon:I.wa},
@@ -1057,6 +1058,7 @@ function App({ currentUserEmail, onLogout }) {
         {tab==='profits'     && <Lucros      ctx={ctx}/>}
         {tab==='contas'      && <Contas      ctx={ctx}/>}
         {tab==='estoque'     && <Estoque       ctx={ctx}/>}
+        {tab==='consultas'   && <ConsultasView  ctx={ctx}/>}
         {tab==='contabil'    && <ContabilView   ctx={ctx}/>}
         {tab==='relatorios'  && <RelatoriosView ctx={ctx}/>}
         {tab==='whatsapp'    && <WhatsApp     ctx={ctx}/>}
@@ -3207,6 +3209,414 @@ function Lucros({ ctx }) {
           <div style={{fontSize:13}}>Quando pedidos ou eventos forem marcados como pagos, aparecerão aqui.</div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── CONSULTAS VIEW ─────────────────────────────────────────────────────────
+function ConsultasView({ ctx }) {
+  const fmtBRL = v => 'R$ '+(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const fmtDate = d => d ? d.split('-').reverse().join('/') : '—';
+
+  const now = new Date();
+  const mesKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+
+  const [aba,       setAba]       = useState('pj');        // 'pj' | 'pf'
+  const [de,        setDe]        = useState(mesKey+'-01');
+  const [ate,       setAte]       = useState(mesKey+'-'+String(new Date(now.getFullYear(),now.getMonth()+1,0).getDate()).padStart(2,'0'));
+  const [expandido, setExpandido] = useState(null);        // id do cliente PJ expandido
+  const [buscaPF,   setBuscaPF]   = useState('');
+
+  const inRange = d => {
+    const s = (d||'').slice(0,10);
+    if (de  && s < de)  return false;
+    if (ate && s > ate) return false;
+    return true;
+  };
+
+  // Atalhos de período
+  const PeriodShortcuts = () => {
+    const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+    return (
+      <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginBottom:14}}>
+        <span style={{fontSize:13,color:C.text2,marginRight:2}}>Período:</span>
+        <input type="date" value={de}  onChange={e=>setDe(e.target.value)}
+          style={{padding:'5px 8px',borderRadius:8,border:'1px solid '+C.border,background:'white',color:C.text,fontSize:13,fontFamily:'inherit'}}/>
+        <span style={{color:C.text2,fontSize:13}}>até</span>
+        <input type="date" value={ate} onChange={e=>setAte(e.target.value)}
+          style={{padding:'5px 8px',borderRadius:8,border:'1px solid '+C.border,background:'white',color:C.text,fontSize:13,fontFamily:'inherit'}}/>
+        {[0,-1,-2,-3].map(offset=>{
+          const d=new Date(); d.setMonth(d.getMonth()+offset);
+          const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+          const ult=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();
+          const mDe=key+'-01', mAte=key+'-'+String(ult).padStart(2,'0');
+          const ativo=de===mDe&&ate===mAte;
+          return <button key={offset} onClick={()=>{setDe(mDe);setAte(mAte);}}
+            style={{padding:'4px 9px',borderRadius:8,border:'1px solid '+C.border,background:ativo?C.red:'white',
+              color:ativo?'white':C.text2,fontFamily:'inherit',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+            {MESES[d.getMonth()]+'/'+String(d.getFullYear()).slice(2)}
+          </button>;
+        })}
+      </div>
+    );
+  };
+
+  // ── PJ ──────────────────────────────────────────────────────────────────
+  const clientesPJ = (ctx.clientes||[]).filter(c => c.tipo==='pj')
+    .sort((a,b)=>(a.razaoSocial||a.nome).localeCompare(b.razaoSocial||b.nome));
+
+  // Pedidos de um cliente (match pelo nome)
+  const pedidosDoCliente = (nome) =>
+    (ctx.orders||[]).filter(o =>
+      (o.client||'').toLowerCase() === (nome||'').toLowerCase() &&
+      o.status !== 'cancelled' && o.status !== 'cancelado'
+    ).sort((a,b) => b.deliveryDate > a.deliveryDate ? 1 : -1);
+
+  const pedidosNoPeriodo = (nome) =>
+    pedidosDoCliente(nome).filter(o => inRange(o.deliveryDate));
+
+  const PJPanel = () => (
+    <div>
+      <PeriodShortcuts/>
+      {clientesPJ.length === 0 && (
+        <div style={{textAlign:'center',padding:'40px 20px',color:C.text2,fontSize:14}}>
+          Nenhum cliente PJ cadastrado ainda.<br/>
+          <span style={{fontSize:12}}>Cadastre clientes PJ na aba Clientes.</span>
+        </div>
+      )}
+      <div style={{display:'flex',flexDirection:'column',gap:10}}>
+        {clientesPJ.map(cli => {
+          const pedsPeriodo = pedidosNoPeriodo(cli.nome);
+          const totalPeriodo = pedsPeriodo.reduce((s,o)=>s+o.total,0);
+          const todosOrders = pedidosDoCliente(cli.nome);
+          const ultimoPed = todosOrders[0];
+          const aberto = expandido === cli.id;
+
+          return (
+            <div key={cli.id} style={{background:'white',borderRadius:14,border:'1px solid '+C.border,overflow:'hidden'}}>
+              {/* Card cabeçalho */}
+              <div onClick={()=>setExpandido(aberto?null:cli.id)}
+                style={{display:'flex',alignItems:'center',padding:'14px 16px',cursor:'pointer',gap:12}}>
+                {/* Avatar */}
+                <div style={{width:42,height:42,borderRadius:10,background:C.red+'18',display:'flex',
+                  alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>
+                  🏢
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:700,fontSize:15,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                    {cli.razaoSocial || cli.nome}
+                  </div>
+                  {cli.razaoSocial && <div style={{fontSize:12,color:C.text2}}>{cli.nome}</div>}
+                  {cli.cnpj && <div style={{fontSize:11,color:C.text2}}>CNPJ: {cli.cnpj}</div>}
+                </div>
+                {/* Resumo do período */}
+                <div style={{textAlign:'right',flexShrink:0}}>
+                  <div style={{fontSize:16,fontWeight:800,color:totalPeriodo>0?C.green:C.text2}}>
+                    {fmtBRL(totalPeriodo)}
+                  </div>
+                  <div style={{fontSize:11,color:C.text2}}>
+                    {pedsPeriodo.length} pedido{pedsPeriodo.length!==1?'s':''} no período
+                  </div>
+                  {ultimoPed && (
+                    <div style={{fontSize:11,color:C.text2}}>
+                      Último: {fmtDate(ultimoPed.deliveryDate)}
+                    </div>
+                  )}
+                </div>
+                <div style={{fontSize:18,color:C.text2,marginLeft:4}}>{aberto?'▲':'▼'}</div>
+              </div>
+
+              {/* Histórico expandido */}
+              {aberto && (
+                <div style={{borderTop:'1px solid '+C.border}}>
+                  {pedsPeriodo.length === 0 ? (
+                    <div style={{padding:'16px',color:C.text2,fontSize:13,textAlign:'center',fontStyle:'italic'}}>
+                      Nenhum pedido neste período.
+                    </div>
+                  ) : pedsPeriodo.map(o => (
+                    <div key={o.id} style={{padding:'10px 16px',borderBottom:'1px solid '+C.border+'88',
+                      display:'flex',alignItems:'flex-start',gap:10}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:3}}>
+                          <span style={{fontSize:13,fontWeight:700,color:C.text}}>
+                            {o.numeroPedido ? `Pedido #${o.numeroPedido}` : fmtDate(o.deliveryDate)}
+                          </span>
+                          {o.numeroPedido && <span style={{fontSize:12,color:C.text2}}>{fmtDate(o.deliveryDate)}</span>}
+                          <span style={{fontSize:11,padding:'2px 7px',borderRadius:20,fontWeight:600,
+                            background:o.status==='delivered'?C.green+'22':o.status==='confirmed'?'#3b82f622':'#f59e0b22',
+                            color:o.status==='delivered'?C.green:o.status==='confirmed'?'#3b82f6':'#f59e0b'}}>
+                            {o.status==='delivered'?'Entregue':o.status==='confirmed'?'Confirmado':'Pendente'}
+                          </span>
+                          {o.paid && <span style={{fontSize:11,padding:'2px 7px',borderRadius:20,fontWeight:600,
+                            background:C.green+'22',color:C.green}}>✓ Pago</span>}
+                        </div>
+                        {/* Itens */}
+                        <div style={{fontSize:12,color:C.text2,marginBottom:2}}>
+                          {(o.items||[]).map((it,j)=>(
+                            <span key={j} style={{marginRight:8}}>
+                              {it.qty}x {it.productName}
+                            </span>
+                          ))}
+                        </div>
+                        {o.notes && <div style={{fontSize:11,color:C.text2,fontStyle:'italic'}}>Obs: {o.notes}</div>}
+                      </div>
+                      <div style={{textAlign:'right',flexShrink:0}}>
+                        <div style={{fontWeight:700,fontSize:15,color:C.text}}>{fmtBRL(o.total)}</div>
+                        {o.paid===false && <div style={{fontSize:11,color:'#ef4444'}}>A receber</div>}
+                      </div>
+                    </div>
+                  ))}
+                  {/* Total do período */}
+                  {pedsPeriodo.length > 0 && (
+                    <div style={{padding:'10px 16px',display:'flex',justifyContent:'space-between',
+                      background:C.red+'0a',borderTop:'1px solid '+C.border}}>
+                      <span style={{fontSize:13,fontWeight:700,color:C.text2}}>
+                        Total no período ({pedsPeriodo.length} pedido{pedsPeriodo.length!==1?'s':''})
+                      </span>
+                      <span style={{fontSize:15,fontWeight:800,color:C.green}}>{fmtBRL(totalPeriodo)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  // ── PF ──────────────────────────────────────────────────────────────────
+  const PFPanel = () => {
+    // Agrupa pedidos PF no período por nome de cliente
+    const clientesPFnomes = new Set(
+      (ctx.clientes||[]).filter(c=>c.tipo==='pf').map(c=>c.nome.toLowerCase())
+    );
+    // Pedidos cujo cliente não está na lista PJ
+    const clientesPJnomes = new Set(
+      (ctx.clientes||[]).filter(c=>c.tipo==='pj').map(c=>c.nome.toLowerCase())
+    );
+    const pedsPF = (ctx.orders||[]).filter(o =>
+      inRange(o.deliveryDate) &&
+      o.status !== 'cancelled' && o.status !== 'cancelado' &&
+      !clientesPJnomes.has((o.client||'').toLowerCase())
+    );
+    const agg = {};
+    pedsPF.forEach(o => {
+      const k = (o.client||'Sem nome').trim();
+      if (!agg[k]) agg[k] = { total:0, count:0, ultimo:'' };
+      agg[k].total  += o.total;
+      agg[k].count  += 1;
+      if (o.deliveryDate > agg[k].ultimo) agg[k].ultimo = o.deliveryDate;
+    });
+    const rows = Object.entries(agg)
+      .filter(([nome]) => !buscaPF.trim() || nome.toLowerCase().includes(buscaPF.toLowerCase()))
+      .sort((a,b) => b[1].total - a[1].total);
+    const totalGeral = rows.reduce((s,[,v])=>s+v.total,0);
+
+    return (
+      <div>
+        <PeriodShortcuts/>
+        {/* Busca */}
+        <div style={{position:'relative',marginBottom:14}}>
+          <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontSize:16}}>🔍</span>
+          <input value={buscaPF} onChange={e=>setBuscaPF(e.target.value)} placeholder="Buscar cliente..."
+            style={{width:'100%',padding:'9px 12px 9px 34px',borderRadius:10,border:'1px solid '+C.border,
+              background:'white',color:C.text,fontSize:14,fontFamily:'inherit',boxSizing:'border-box'}}/>
+          {buscaPF && <button onClick={()=>setBuscaPF('')}
+            style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:16,color:C.text2}}>×</button>}
+        </div>
+        {rows.length === 0 ? (
+          <div style={{textAlign:'center',padding:'40px 20px',color:C.text2,fontSize:14}}>
+            Nenhum pedido PF encontrado no período.
+          </div>
+        ) : (
+          <div style={{background:'white',borderRadius:14,border:'1px solid '+C.border,overflow:'hidden'}}>
+            {/* Cabeçalho */}
+            <div style={{display:'grid',gridTemplateColumns:'1fr auto auto auto',gap:8,
+              padding:'8px 14px',background:C.red+'0a',borderBottom:'1px solid '+C.border}}>
+              <span style={{fontSize:11,fontWeight:700,color:C.text2,textTransform:'uppercase'}}>Cliente</span>
+              <span style={{fontSize:11,fontWeight:700,color:C.text2,textTransform:'uppercase',textAlign:'center',minWidth:50}}>Pedidos</span>
+              <span style={{fontSize:11,fontWeight:700,color:C.text2,textTransform:'uppercase',textAlign:'center',minWidth:70}}>Ticket médio</span>
+              <span style={{fontSize:11,fontWeight:700,color:C.text2,textTransform:'uppercase',textAlign:'right',minWidth:90}}>Total</span>
+            </div>
+            {rows.map(([nome, v]) => (
+              <div key={nome} style={{display:'grid',gridTemplateColumns:'1fr auto auto auto',gap:8,
+                padding:'10px 14px',borderBottom:'1px solid '+C.border+'55',alignItems:'center'}}>
+                <div>
+                  <div style={{fontSize:13,fontWeight:600,color:C.text}}>{nome}</div>
+                  <div style={{fontSize:11,color:C.text2}}>Último: {fmtDate(v.ultimo)}</div>
+                </div>
+                <span style={{fontSize:13,color:C.text2,textAlign:'center',minWidth:50}}>{v.count}</span>
+                <span style={{fontSize:13,color:C.text2,textAlign:'center',minWidth:70}}>{fmtBRL(v.total/v.count)}</span>
+                <span style={{fontSize:13,fontWeight:700,color:C.text,textAlign:'right',minWidth:90}}>{fmtBRL(v.total)}</span>
+              </div>
+            ))}
+            {/* Rodapé */}
+            <div style={{display:'grid',gridTemplateColumns:'1fr auto auto auto',gap:8,
+              padding:'10px 14px',background:C.red+'0a',borderTop:'1px solid '+C.border}}>
+              <span style={{fontSize:13,fontWeight:700,color:C.text2}}>{rows.length} cliente{rows.length!==1?'s':''}</span>
+              <span style={{minWidth:50}}/>
+              <span style={{minWidth:70}}/>
+              <span style={{fontSize:14,fontWeight:800,color:C.green,textAlign:'right',minWidth:90}}>{fmtBRL(totalGeral)}</span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // ── INSUMOS (Matéria-Prima) ─────────────────────────────────────────────
+  const [mpSel,    setMpSel]    = useState('');   // id da MP selecionada
+  const [mpBusca,  setMpBusca]  = useState('');
+
+  const MPPanel = () => {
+    const mps = (ctx.materiasPrimas||[]).slice().sort((a,b)=>a.nome.localeCompare(b.nome));
+    const mpAtual = mps.find(m=>m.id===mpSel) || null;
+
+    // Filtra compras da MP selecionada no período
+    const todasCompras = mpAtual
+      ? comprasDeMP(ctx.contas||[], mpAtual.nome).filter(c => {
+          const data = (c.vencimento || c.criadoEm || '').slice(0,10);
+          if (de  && data < de)  return false;
+          if (ate && data > ate) return false;
+          return true;
+        })
+      : [];
+
+    const totalQtd   = todasCompras.reduce((s,c)=>s+c.quantidade,0);
+    const totalGasto = todasCompras.reduce((s,c)=>s+c.valor,0);
+    const precoMedio = todasCompras.length ? totalGasto/totalQtd : 0;
+    const unidadeRef = todasCompras[0]?.unidade || mpAtual?.unidadePadrao || '';
+
+    return (
+      <div>
+        <PeriodShortcuts/>
+
+        {/* Seletor de MP */}
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:13,color:C.text2,marginBottom:6,fontWeight:600}}>Matéria-prima:</div>
+          <div style={{position:'relative',marginBottom:8}}>
+            <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontSize:15}}>🌾</span>
+            <input value={mpBusca} onChange={e=>{setMpBusca(e.target.value);setMpSel('');}}
+              placeholder="Buscar matéria-prima..."
+              style={{width:'100%',padding:'9px 12px 9px 32px',borderRadius:10,border:'1px solid '+(mpAtual?C.red:C.border),
+                background:'white',color:C.text,fontSize:14,fontFamily:'inherit',boxSizing:'border-box'}}/>
+            {mpBusca && <button onClick={()=>{setMpBusca('');setMpSel('');}}
+              style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:16,color:C.text2}}>×</button>}
+          </div>
+          {/* Lista de sugestões */}
+          {mpBusca && !mpAtual && (
+            <div style={{background:'white',border:'1px solid '+C.border,borderRadius:10,overflow:'hidden',maxHeight:200,overflowY:'auto'}}>
+              {mps.filter(m=>m.nome.toLowerCase().includes(mpBusca.toLowerCase())).length===0
+                ? <div style={{padding:'12px 14px',color:C.text2,fontSize:13}}>Nenhuma matéria-prima encontrada.</div>
+                : mps.filter(m=>m.nome.toLowerCase().includes(mpBusca.toLowerCase())).map(m=>(
+                    <div key={m.id} onClick={()=>{setMpSel(m.id);setMpBusca(m.nome);}}
+                      style={{padding:'10px 14px',borderBottom:'1px solid '+C.border+'55',cursor:'pointer',
+                        display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                      <span style={{fontSize:14,color:C.text,fontWeight:500}}>{m.nome}</span>
+                      <span style={{fontSize:12,color:C.text2}}>{m.unidadePadrao}</span>
+                    </div>
+                  ))}
+            </div>
+          )}
+          {mpAtual && !mpBusca.includes(mpAtual.nome) && setMpBusca(mpAtual.nome) && null}
+        </div>
+
+        {/* Resultado */}
+        {!mpAtual ? (
+          <div style={{textAlign:'center',padding:'40px 20px',color:C.text2,fontSize:14}}>
+            Selecione uma matéria-prima para ver as compras.
+          </div>
+        ) : (
+          <div>
+            {/* Cards de resumo */}
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:14}}>
+              {[
+                {label:'Total comprado', value:`${totalQtd.toLocaleString('pt-BR',{maximumFractionDigits:3})} ${unidadeRef}`, sub: todasCompras.length+' compra'+(todasCompras.length!==1?'s':''), color:C.blue},
+                {label:'Total gasto',    value:fmtBRL(totalGasto), sub:'no período', color:C.red},
+                {label:'Preço médio',    value:todasCompras.length?fmtBRL(precoMedio)+'/'+unidadeRef:'—', sub:'por unidade', color:C.green},
+              ].map(({label,value,sub,color})=>(
+                <div key={label} style={{background:'white',borderRadius:12,border:'1px solid '+C.border,padding:'12px 14px'}}>
+                  <div style={{fontSize:11,color:C.text2,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:4}}>{label}</div>
+                  <div style={{fontSize:15,fontWeight:800,color}}>{value}</div>
+                  <div style={{fontSize:11,color:C.text2,marginTop:2}}>{sub}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Tabela de compras */}
+            {todasCompras.length===0 ? (
+              <div style={{background:'white',borderRadius:14,border:'1px solid '+C.border,padding:'24px',textAlign:'center',color:C.text2,fontSize:13}}>
+                Nenhuma compra de <strong>{mpAtual.nome}</strong> registrada neste período.<br/>
+                <span style={{fontSize:12}}>Verifique os lançamentos em Contas a Pagar.</span>
+              </div>
+            ) : (
+              <div style={{background:'white',borderRadius:14,border:'1px solid '+C.border,overflow:'hidden'}}>
+                {/* Cabeçalho */}
+                <div style={{display:'grid',gridTemplateColumns:'1fr auto auto auto',gap:8,
+                  padding:'8px 14px',background:C.red+'0a',borderBottom:'1px solid '+C.border}}>
+                  <span style={{fontSize:11,fontWeight:700,color:C.text2,textTransform:'uppercase'}}>Data / Fornecedor</span>
+                  <span style={{fontSize:11,fontWeight:700,color:C.text2,textTransform:'uppercase',textAlign:'center',minWidth:80}}>Quantidade</span>
+                  <span style={{fontSize:11,fontWeight:700,color:C.text2,textTransform:'uppercase',textAlign:'center',minWidth:80}}>Preço/unit</span>
+                  <span style={{fontSize:11,fontWeight:700,color:C.text2,textTransform:'uppercase',textAlign:'right',minWidth:90}}>Total</span>
+                </div>
+                {todasCompras.map((c,i)=>{
+                  const data=(c.vencimento||c.criadoEm||'').slice(0,10);
+                  const pUnit=c.quantidade>0?c.valor/c.quantidade:0;
+                  return (
+                    <div key={i} style={{display:'grid',gridTemplateColumns:'1fr auto auto auto',gap:8,
+                      padding:'10px 14px',borderBottom:'1px solid '+C.border+'55',alignItems:'center'}}>
+                      <div>
+                        <div style={{fontSize:13,fontWeight:600,color:C.text}}>{fmtDate(data)}</div>
+                        {c.cliente && <div style={{fontSize:12,color:C.text2}}>{c.cliente}</div>}
+                      </div>
+                      <span style={{fontSize:13,color:C.text,textAlign:'center',minWidth:80,fontWeight:600}}>
+                        {c.quantidade.toLocaleString('pt-BR',{maximumFractionDigits:3})} {c.unidade}
+                      </span>
+                      <span style={{fontSize:13,color:C.text2,textAlign:'center',minWidth:80}}>{fmtBRL(pUnit)}</span>
+                      <span style={{fontSize:13,fontWeight:700,color:C.text,textAlign:'right',minWidth:90}}>{fmtBRL(c.valor)}</span>
+                    </div>
+                  );
+                })}
+                {/* Rodapé */}
+                <div style={{display:'grid',gridTemplateColumns:'1fr auto auto auto',gap:8,
+                  padding:'10px 14px',background:C.red+'0a',borderTop:'1px solid '+C.border}}>
+                  <span style={{fontSize:13,fontWeight:700,color:C.text2}}>
+                    {todasCompras.length} compra{todasCompras.length!==1?'s':''}
+                  </span>
+                  <span style={{fontSize:13,fontWeight:700,color:C.text,textAlign:'center',minWidth:80}}>
+                    {totalQtd.toLocaleString('pt-BR',{maximumFractionDigits:3})} {unidadeRef}
+                  </span>
+                  <span style={{minWidth:80}}/>
+                  <span style={{fontSize:14,fontWeight:800,color:C.green,textAlign:'right',minWidth:90}}>{fmtBRL(totalGasto)}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div style={{paddingBottom:40}}>
+      {/* Header com toggle PJ / PF / Insumos */}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
+        <h2 style={{margin:0,fontSize:18,fontWeight:700,color:C.text}}>🔍 Consultas</h2>
+        <div style={{display:'flex',background:C.cream,borderRadius:10,padding:3,gap:2}}>
+          {[{k:'pj',l:'PJ'},{k:'pf',l:'PF'},{k:'mp',l:'🌾 Insumos'}].map(({k,l})=>(
+            <button key={k} onClick={()=>{setAba(k);setExpandido(null);}}
+              style={{padding:'7px 14px',borderRadius:8,border:'none',fontFamily:'inherit',fontSize:13,fontWeight:700,cursor:'pointer',
+                background:aba===k?C.red:'transparent',color:aba===k?'white':C.text2,transition:'all 0.15s'}}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {aba==='pj' && <PJPanel/>}
+      {aba==='pf' && <PFPanel/>}
+      {aba==='mp' && <MPPanel/>}
     </div>
   );
 }
