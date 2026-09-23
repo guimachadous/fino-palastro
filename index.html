@@ -6031,7 +6031,7 @@ function NfseView({ ctx }) {
             <div>
               <div style={{fontWeight:800,fontSize:15}}>{nf.clienteNome}</div>
               {nf.numero && <div style={{fontSize:12,color:C.text2,marginTop:2}}>NFS-e #{nf.numero}</div>}
-              <div style={{fontSize:12,color:C.text2,marginTop:2}}>📅 {nf.dataEmissao ? fmtData(nf.dataEmissao) : '—'}</div>
+              <div style={{fontSize:12,color:C.text2,marginTop:2}}>📅 {nf.dataEmissao ? fmtDate(nf.dataEmissao) : '—'}</div>
             </div>
             <div style={{textAlign:'right'}}>
               <div style={{fontWeight:900,fontSize:17,color:'#059669'}}>{fmtBRL(nf.total||0)}</div>
