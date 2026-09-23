@@ -389,6 +389,7 @@ function App({ currentUserEmail, onLogout }) {
   const [cloudStatus, setCloudStatus] = useState('idle'); // idle|syncing|ok|error
   const [contas,        setContas]        = useState(()=>db.get('fp_contas',[]));
   const [nfsSaida,      setNfsSaida]      = useState(()=>db.get('fp_nfs_saida',[]));
+  const [nfse,          setNfse]          = useState(()=>db.get('fp_nfse',[]));
   const [catsPagar,     setCatsPagar]     = useState(()=>db.get('fp_cats_pagar', CATS_P_DEFAULT));
   const [unidadesMedida,setUnidadesMedida]= useState(()=>db.get('fp_unidades', UNIDADES_DEFAULT));
   const [fornecedores,  setFornecedores]  = useState(()=>db.get('fp_fornecedores', []));
@@ -442,6 +443,7 @@ function App({ currentUserEmail, onLogout }) {
   useEffect(()=>{ if(initDone.current) db.set('fp_opening_bal', openBal); }, [openBal]);
   useEffect(()=>{ if(initDone.current) db.set('fp_contas',       contas);       }, [contas]);
   useEffect(()=>{ if(initDone.current) db.set('fp_nfs_saida',    nfsSaida);     }, [nfsSaida]);
+  useEffect(()=>{ if(initDone.current) db.set('fp_nfse',         nfse);         }, [nfse]);
   useEffect(()=>{ if(initDone.current) db.set('fp_cats_pagar',   catsPagar);    }, [catsPagar]);
   useEffect(()=>{ if(initDone.current) db.set('fp_unidades',    unidadesMedida);}, [unidadesMedida]);
   useEffect(()=>{ if(initDone.current) db.set('fp_fornecedores',    fornecedores);    }, [fornecedores]);
@@ -581,6 +583,9 @@ function App({ currentUserEmail, onLogout }) {
   const addNfSaida = nf => setNfsSaida(p=>[{...nf, id:nf.id||genId(), criadoEm:today()}, ...p]);
   const updNfSaida = (id,d) => setNfsSaida(p=>p.map(n=>n.id===id?{...n,...d}:n));
   const delNfSaida = id => setNfsSaida(p=>p.filter(n=>n.id!==id));
+  const addNfse = nf => setNfse(p=>[{...nf, id:nf.id||genId(), criadoEm:today()}, ...p]);
+  const updNfse = (id,d) => setNfse(p=>p.map(n=>n.id===id?{...n,...d}:n));
+  const delNfse = id => setNfse(p=>p.filter(n=>n.id!==id));
   const addMateriaPrima = m => setMateriasPrimas(p=>[{...m,id:genId(),criadoEm:today()},...p]);
   const updMateriaPrima = (id,d) => setMateriasPrimas(p=>p.map(m=>m.id===id?{...m,...d}:m));
   const delMateriaPrima = id => setMateriasPrimas(p=>p.filter(m=>m.id!==id));
@@ -946,7 +951,7 @@ function App({ currentUserEmail, onLogout }) {
     return () => clearInterval(id);
   }, [sheetId]);
 
-  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, unpaidOrder, paidEvent, contas, addConta, updConta, pagarConta, delConta, nfsSaida, addNfSaida, updNfSaida, delNfSaida, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus, newCardapioCount, catsPagar, setCatsPagar, catsReceber, setCatsReceber, catsIn, setCatsIn, catsOut, setCatsOut, unidadesMedida, setUnidadesMedida, fornecedores, addFornecedor, updFornecedor, delFornecedor, clientes, addCliente, updCliente, delCliente, materiasPrimas, addMateriaPrima, updMateriaPrima, delMateriaPrima, estoqueData, estoqueHist, ajustarEstoque, debitarEstoquePedido, reporEstoquePedido, delHistoricoEstoque, sabores, addSabor, updSabor, delSabor, currentUserEmail, onLogout, catTipo, setCatTipo };
+  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, unpaidOrder, paidEvent, contas, addConta, updConta, pagarConta, delConta, nfsSaida, addNfSaida, updNfSaida, delNfSaida, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus, newCardapioCount, catsPagar, setCatsPagar, catsReceber, setCatsReceber, catsIn, setCatsIn, catsOut, setCatsOut, unidadesMedida, setUnidadesMedida, fornecedores, addFornecedor, updFornecedor, delFornecedor, clientes, addCliente, updCliente, delCliente, materiasPrimas, addMateriaPrima, updMateriaPrima, delMateriaPrima, estoqueData, estoqueHist, ajustarEstoque, debitarEstoquePedido, reporEstoquePedido, delHistoricoEstoque, sabores, addSabor, updSabor, delSabor, currentUserEmail, onLogout, catTipo, setCatTipo, nfse, addNfse, updNfse, delNfse };
 
   const TABS = [
     {id:'dashboard',   lbl:'Início',   icon:I.home},
@@ -956,6 +961,7 @@ function App({ currentUserEmail, onLogout }) {
     {id:'contas',      lbl:'Contas',   icon:I.bill},
     {id:'estoque',     lbl:'Estoque',  icon:I.box},
     {id:'profits',     lbl:'Lucros',     icon:I.coin},
+    {id:'nfse',        lbl:'NFS-e',      icon:()=>'🧾'},
     {id:'consultas',   lbl:'Consultas',  icon:()=>'🔍'},
     {id:'contabil',    lbl:'Contábil',   icon:()=>'📊'},
     {id:'relatorios',  lbl:'Relatórios', icon:I.chart},
@@ -969,6 +975,7 @@ function App({ currentUserEmail, onLogout }) {
       <button onClick={()=>open('add_order')} style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 13px',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5,fontFamily:'inherit'}}>{I.plus('white',15)} Pedido</button>
     </div>;
     if (tab==='events')  return <button onClick={()=>open('add_event')} style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 13px',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5,fontFamily:'inherit'}}>{I.plus('white',15)} Evento</button>;
+    if (tab==='nfse') return <button onClick={()=>open('add_nfse')} style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 13px',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5,fontFamily:'inherit'}}>{I.plus('white',15)} NFS-e</button>;
     if (tab==='contas')  return <div style={{display:'flex',gap:6}}>
       <button onClick={()=>open('boletos_relatorio')} style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 12px',fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>💳 Boletos</button>
       <button onClick={()=>open('add_nf_saida')} style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 12px',fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>📄 NF Saída</button>
@@ -1058,6 +1065,7 @@ function App({ currentUserEmail, onLogout }) {
         {tab==='profits'     && <Lucros      ctx={ctx}/>}
         {tab==='contas'      && <Contas      ctx={ctx}/>}
         {tab==='estoque'     && <Estoque       ctx={ctx}/>}
+        {tab==='nfse'        && <NfseView        ctx={ctx}/>}
         {tab==='consultas'   && <ConsultasView  ctx={ctx}/>}
         {tab==='contabil'    && <ContabilView   ctx={ctx}/>}
         {tab==='relatorios'  && <RelatoriosView ctx={ctx}/>}
@@ -1073,6 +1081,7 @@ function App({ currentUserEmail, onLogout }) {
       {modal==='add_event'  && <EventModal   ctx={ctx} event={mData}/>}
       {modal==='add_conta'  && <ContaModal   ctx={ctx} initTipo={mData?.tipo||'receber'} conta={mData?.id?mData:null}/>}
       {modal==='add_nf_saida' && <NfSaidaModal ctx={ctx} nf={mData?.id?mData:null}/>}
+      {modal==='add_nfse'    && <NfseModal    ctx={ctx} nf={mData?.id?mData:null}/>}
       {modal==='boletos_relatorio' && <BoletosModal ctx={ctx}/>}
       {modal==='pagar_conta' && <PagamentoModal ctx={ctx} conta={mData}/>}
       {modal==='view_order' && <OrderDetail  ctx={ctx} order={mData}/>}
@@ -5927,6 +5936,339 @@ function BoletosModal({ ctx }) {
               )}
             </div>
           ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── NFS-e VIEW ─────────────────────────────────────────────────────────────
+function NfseView({ ctx }) {
+  const { nfse, open, updNfse, addConta } = ctx;
+  const [filtro, setFiltro] = useState('');
+  const [periodo, setPeriodo] = useState('all');
+
+  const hoje = today();
+  const mesAtual = hoje.slice(0,7);
+
+  const filtradas = (nfse||[]).filter(n => {
+    if (periodo !== 'all' && (!n.dataEmissao || n.dataEmissao.slice(0,7) !== periodo)) return false;
+    if (filtro) {
+      const q = filtro.toLowerCase();
+      if (!(n.clienteNome||'').toLowerCase().includes(q) && !(n.numero||'').includes(q)) return false;
+    }
+    return true;
+  }).sort((a,b) => (b.dataEmissao||'').localeCompare(a.dataEmissao||''));
+
+  const totalGeral = filtradas.reduce((s,n)=>s+(n.total||0),0);
+  const totalRecebido = filtradas.filter(n=>n.recebida).reduce((s,n)=>s+(n.total||0),0);
+
+  const marcarRecebida = (nf) => {
+    updNfse(nf.id, { recebida: true, recebidaEm: hoje });
+    // Cria conta a receber paga
+    addConta({
+      tipo: 'receber',
+      descricao: `NFS-e${nf.numero?' #'+nf.numero:''} — ${nf.clienteNome}`,
+      valor: nf.total,
+      vencimento: nf.vencimento || hoje,
+      categoria: 'Serviços',
+      cliente: nf.clienteNome,
+      notaFiscal: nf.numero || '',
+      quantidade: null, unidade: null, itens: null,
+      origemTipo: 'nfse',
+      origemId: nf.id,
+      pago: true, pagoEm: hoje,
+    });
+  };
+
+  const mesesDisponiveis = [...new Set((nfse||[]).map(n=>(n.dataEmissao||'').slice(0,7)).filter(Boolean))].sort().reverse();
+
+  return (
+    <div style={{padding:'0 0 80px'}}>
+      {/* Cabeçalho resumo */}
+      <div style={{display:'flex',gap:10,marginBottom:16}}>
+        <div style={{flex:1,background:'#ecfdf5',borderRadius:16,padding:'14px 16px',textAlign:'center'}}>
+          <div style={{fontSize:11,color:'#065f46',fontWeight:700,marginBottom:4}}>TOTAL EMITIDO</div>
+          <div style={{fontWeight:900,fontSize:18,color:'#059669'}}>{fmtBRL(totalGeral)}</div>
+        </div>
+        <div style={{flex:1,background:'#f0fdf4',borderRadius:16,padding:'14px 16px',textAlign:'center'}}>
+          <div style={{fontSize:11,color:'#065f46',fontWeight:700,marginBottom:4}}>RECEBIDO</div>
+          <div style={{fontWeight:900,fontSize:18,color:'#059669'}}>{fmtBRL(totalRecebido)}</div>
+        </div>
+        <div style={{flex:1,background:'#fefce8',borderRadius:16,padding:'14px 16px',textAlign:'center'}}>
+          <div style={{fontSize:11,color:'#92400e',fontWeight:700,marginBottom:4}}>PENDENTE</div>
+          <div style={{fontWeight:900,fontSize:18,color:'#d97706'}}>{fmtBRL(totalGeral-totalRecebido)}</div>
+        </div>
+      </div>
+
+      {/* Filtros */}
+      <input className="input" placeholder="🔍 Buscar por cliente ou número..." value={filtro}
+        onChange={e=>setFiltro(e.target.value)} style={{marginBottom:10}}/>
+      <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap'}}>
+        <button onClick={()=>setPeriodo('all')} style={{padding:'6px 14px',borderRadius:20,border:'none',background:periodo==='all'?'#059669':'#e5e7eb',color:periodo==='all'?'white':C.text,fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>Todos</button>
+        {mesesDisponiveis.map(m=>(
+          <button key={m} onClick={()=>setPeriodo(m)} style={{padding:'6px 14px',borderRadius:20,border:'none',background:periodo===m?'#059669':'#e5e7eb',color:periodo===m?'white':C.text,fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
+            {m.slice(5)+'/'+m.slice(0,4)}
+          </button>
+        ))}
+      </div>
+
+      {/* Lista */}
+      {filtradas.length === 0 ? (
+        <div style={{textAlign:'center',padding:'60px 20px',color:C.text2}}>
+          <div style={{fontSize:40,marginBottom:12}}>🧾</div>
+          <div style={{fontWeight:700,fontSize:16,marginBottom:6}}>Nenhuma NFS-e encontrada</div>
+          <div style={{fontSize:13}}>Toque em "+ NFS-e" para emitir a primeira nota.</div>
+        </div>
+      ) : filtradas.map(nf => (
+        <div key={nf.id} style={{background:'white',borderRadius:16,padding:16,marginBottom:10,border:`1.5px solid ${nf.recebida ? '#86efac' : C.border}`,boxShadow:'0 2px 8px rgba(0,0,0,0.05)'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
+            <div>
+              <div style={{fontWeight:800,fontSize:15}}>{nf.clienteNome}</div>
+              {nf.numero && <div style={{fontSize:12,color:C.text2,marginTop:2}}>NFS-e #{nf.numero}</div>}
+              <div style={{fontSize:12,color:C.text2,marginTop:2}}>📅 {nf.dataEmissao ? fmtData(nf.dataEmissao) : '—'}</div>
+            </div>
+            <div style={{textAlign:'right'}}>
+              <div style={{fontWeight:900,fontSize:17,color:'#059669'}}>{fmtBRL(nf.total||0)}</div>
+              <div style={{fontSize:11,marginTop:4,padding:'3px 10px',borderRadius:20,background:nf.recebida?'#dcfce7':'#fef9c3',color:nf.recebida?'#15803d':'#92400e',fontWeight:700,display:'inline-block'}}>
+                {nf.recebida ? '✓ Recebida' : '⏳ Pendente'}
+              </div>
+            </div>
+          </div>
+
+          {/* Itens resumo */}
+          {(nf.itens||[]).length > 0 && (
+            <div style={{fontSize:12,color:C.text2,marginBottom:10,lineHeight:1.6}}>
+              {nf.itens.map((it,i)=>(
+                <span key={i}>{it.qty}× {it.nome}{i<nf.itens.length-1?', ':''}</span>
+              ))}
+            </div>
+          )}
+
+          {nf.obs && <div style={{fontSize:12,color:C.text2,fontStyle:'italic',marginBottom:8}}>"{nf.obs}"</div>}
+
+          {/* Ações */}
+          <div style={{display:'flex',gap:8,marginTop:4}}>
+            <button onClick={()=>open('add_nfse', nf)} style={{flex:1,background:'#f8fafc',border:`1px solid ${C.border}`,borderRadius:10,padding:'8px',color:C.text,fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
+              ✏️ Editar
+            </button>
+            {!nf.recebida && (
+              <button onClick={()=>marcarRecebida(nf)} style={{flex:2,background:'#059669',border:'none',borderRadius:10,padding:'8px',color:'white',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
+                ✓ Marcar como recebida
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── NFS-e MODAL ─────────────────────────────────────────────────────────────
+function NfseModal({ ctx, nf }) {
+  const { close } = ctx;
+  const editing = !!nf;
+
+  const defaultVenc = () => {
+    const d = new Date(); d.setDate(d.getDate()+30);
+    return d.toISOString().split('T')[0];
+  };
+
+  const [numero,        setNumero]        = useState(nf?.numero || '');
+  const [dataEmissao,   setDataEmissao]   = useState(nf?.dataEmissao || today());
+  const [vencimento,    setVencimento]    = useState(nf?.vencimento || defaultVenc());
+  const [clienteId,     setClienteId]     = useState(nf?.clienteId || '');
+  const [clienteNome,   setClienteNome]   = useState(nf?.clienteNome || '');
+  const [clienteFiltro, setClienteFiltro] = useState(nf?.clienteNome || '');
+  const [showClienteDrop, setShowClienteDrop] = useState(false);
+  const [itens,         setItens]         = useState(nf?.itens || [{nome:'',qty:'',valorUnit:'',total:0}]);
+  const [obs,           setObs]           = useState(nf?.obs || '');
+
+  const toNum = v => parseFloat(String(v||'').replace(',','.')) || 0;
+  const total = itens.reduce((s,it)=>s+toNum(it.total),0);
+
+  const clientes = ctx.clientes || [];
+  const clientesFiltrados = clientes.filter(c => {
+    const q = clienteFiltro.toLowerCase();
+    return !q || (c.nome||'').toLowerCase().includes(q) || (c.razaoSocial||'').toLowerCase().includes(q);
+  }).slice(0,8);
+
+  const selecionarCliente = (c) => {
+    setClienteId(c.id);
+    setClienteNome(c.nome);
+    setClienteFiltro(c.nome);
+    setShowClienteDrop(false);
+  };
+
+  const updateItem = (idx, patch) => {
+    setItens(prev => prev.map((it,i) => {
+      if (i!==idx) return it;
+      const next = {...it, ...patch};
+      if (patch.qty !== undefined || patch.valorUnit !== undefined) {
+        next.total = toNum(next.qty) * toNum(next.valorUnit);
+      }
+      return next;
+    }));
+  };
+
+  const addItem = () => setItens(p=>[...p,{nome:'',qty:'',valorUnit:'',total:0}]);
+  const removeItem = idx => setItens(p=>p.filter((_,i)=>i!==idx));
+
+  const itensValidos = itens.filter(it=>it.nome.trim() && toNum(it.qty)>0 && toNum(it.valorUnit)>0);
+  const ok = clienteNome.trim() && itensValidos.length > 0;
+
+  const save = () => {
+    if (!ok) return;
+    const nfId = nf?.id || genId();
+    const itensFinais = itensValidos.map(it=>({
+      nome: it.nome.trim(),
+      qty: toNum(it.qty),
+      valorUnit: toNum(it.valorUnit),
+      total: toNum(it.total),
+    }));
+    const totalFinal = itensFinais.reduce((s,it)=>s+it.total,0);
+    const nfData = {
+      id: nfId,
+      numero: numero.trim(),
+      dataEmissao,
+      vencimento,
+      clienteId,
+      clienteNome: clienteNome.trim(),
+      clienteTipo: clientes.find(c=>c.id===clienteId)?.tipo || 'pj',
+      itens: itensFinais,
+      total: totalFinal,
+      obs: obs.trim(),
+      recebida: nf?.recebida || false,
+      recebidaEm: nf?.recebidaEm || null,
+    };
+
+    if (editing) {
+      ctx.updNfse(nfId, nfData);
+    } else {
+      ctx.addNfse(nfData);
+      // Cria conta a receber vinculada
+      ctx.addConta({
+        tipo: 'receber',
+        descricao: `NFS-e${numero.trim()?' #'+numero.trim():''} — ${clienteNome.trim()}`,
+        valor: totalFinal,
+        vencimento,
+        categoria: 'Serviços',
+        cliente: clienteNome.trim(),
+        notaFiscal: numero.trim(),
+        quantidade: null, unidade: null, itens: null,
+        origemTipo: 'nfse',
+        origemId: nfId,
+        pago: false, pagoEm: null,
+      });
+    }
+    close();
+  };
+
+  const GREEN = '#059669';
+  const GREEN_LIGHT = '#ecfdf5';
+  const GREEN_BORDER = '#86efac';
+
+  return (
+    <div className="overlay" onClick={close}>
+      <div className="sheet" onClick={e=>e.stopPropagation()}>
+        <div className="sheet-handle"/>
+        <div style={{fontWeight:800,fontSize:18,marginBottom:18,color:GREEN}}>
+          {editing ? '✏️ Editar NFS-e' : '🧾 Nova NFS-e'}
+        </div>
+
+        {/* Número e data */}
+        <div style={{display:'flex',gap:10,marginBottom:14}}>
+          <div style={{flex:1}}>
+            <label className="label" style={{marginBottom:4}}>Número da NFS-e</label>
+            <input className="input" placeholder="Ex: 000056" value={numero} onChange={e=>setNumero(e.target.value)} style={{marginBottom:0}}/>
+          </div>
+          <div style={{flex:1}}>
+            <label className="label" style={{marginBottom:4}}>Data de emissão</label>
+            <input className="input" type="date" value={dataEmissao} onChange={e=>setDataEmissao(e.target.value)} style={{marginBottom:0}}/>
+          </div>
+        </div>
+
+        {/* Cliente */}
+        <label className="label" style={{marginBottom:4}}>Cliente / Tomador *</label>
+        <div style={{position:'relative',marginBottom:14}}>
+          <input className="input" placeholder="Buscar cliente cadastrado..." value={clienteFiltro}
+            onChange={e=>{setClienteFiltro(e.target.value);setClienteNome(e.target.value);setClienteId('');setShowClienteDrop(true);}}
+            onFocus={()=>setShowClienteDrop(true)}
+            onBlur={()=>setTimeout(()=>setShowClienteDrop(false),180)}
+            style={{marginBottom:0}}/>
+          {showClienteDrop && clientesFiltrados.length>0 && (
+            <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'white',border:`1px solid ${C.border}`,borderRadius:12,boxShadow:'0 8px 20px rgba(0,0,0,0.12)',zIndex:20,maxHeight:200,overflowY:'auto'}}>
+              {clientesFiltrados.map(c=>(
+                <div key={c.id} onMouseDown={()=>selecionarCliente(c)}
+                  style={{padding:'10px 14px',fontSize:14,cursor:'pointer',borderBottom:`1px solid ${C.border}`}}>
+                  <div style={{fontWeight:600}}>{c.nome}</div>
+                  {c.razaoSocial && <div style={{fontSize:11,color:C.text2}}>{c.razaoSocial}</div>}
+                  <div style={{fontSize:11,color:C.text2}}>{c.tipo==='pj'?'PJ':'PF'}{c.cnpj?' · CNPJ '+c.cnpj:c.cpf?' · CPF '+c.cpf:''}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Serviços */}
+        <label className="label" style={{marginBottom:6}}>Serviços prestados *</label>
+        {itens.map((it,idx)=>(
+          <div key={idx} style={{background:GREEN_LIGHT,borderRadius:14,padding:12,marginBottom:8,border:`1px solid ${GREEN_BORDER}`}}>
+            <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}>
+              <span style={{fontWeight:700,fontSize:12,color:GREEN}}>Serviço {idx+1}</span>
+              {itens.length>1 && (
+                <button onClick={()=>removeItem(idx)} style={{marginLeft:'auto',background:'transparent',border:'none',cursor:'pointer',color:C.red,fontSize:18,lineHeight:1,padding:'0 4px',fontFamily:'inherit'}}>×</button>
+              )}
+            </div>
+            {/* Nome do serviço */}
+            <input className="input" placeholder="Descrição do serviço (ex: Evento ao vivo — Casamento Silva)" value={it.nome}
+              onChange={e=>updateItem(idx,{nome:e.target.value})}
+              style={{marginBottom:8}}/>
+            {/* Qty e valor */}
+            <div style={{display:'flex',gap:8}}>
+              <div style={{flex:1}}>
+                <label className="label" style={{marginBottom:3,fontSize:11}}>Quantidade</label>
+                <input className="input" placeholder="Ex: 1" value={it.qty}
+                  onChange={e=>updateItem(idx,{qty:e.target.value})}
+                  style={{marginBottom:0}}/>
+              </div>
+              <div style={{flex:1}}>
+                <label className="label" style={{marginBottom:3,fontSize:11}}>Vlr unitário (R$)</label>
+                <input className="input" placeholder="Ex: 1200,00" value={it.valorUnit}
+                  onChange={e=>updateItem(idx,{valorUnit:e.target.value})}
+                  style={{marginBottom:0}}/>
+              </div>
+              <div style={{flex:1,display:'flex',flexDirection:'column',justifyContent:'flex-end'}}>
+                <div style={{fontSize:11,color:GREEN,fontWeight:700,marginBottom:3}}>SUBTOTAL</div>
+                <div style={{fontWeight:800,fontSize:15,color:GREEN}}>{fmtBRL(toNum(it.total)||toNum(it.qty)*toNum(it.valorUnit))}</div>
+              </div>
+            </div>
+          </div>
+        ))}
+        <button onClick={addItem} style={{width:'100%',background:'transparent',border:`1.5px dashed ${GREEN_BORDER}`,borderRadius:12,padding:'10px',color:GREEN,fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:'inherit',marginBottom:14}}>
+          + Adicionar serviço
+        </button>
+
+        {/* Vencimento */}
+        <label className="label" style={{marginBottom:4}}>Vencimento (para conta a receber)</label>
+        <input className="input" type="date" value={vencimento} onChange={e=>setVencimento(e.target.value)} style={{marginBottom:14}}/>
+
+        {/* Observações */}
+        <label className="label" style={{marginBottom:4}}>Observações (opcional)</label>
+        <input className="input" placeholder="Ex: Evento realizado em 15/09/2026 — Buffet completo" value={obs} onChange={e=>setObs(e.target.value)} style={{marginBottom:18}}/>
+
+        {/* Total e salvar */}
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',background:GREEN_LIGHT,borderRadius:14,padding:'12px 16px',marginBottom:16,border:`1px solid ${GREEN_BORDER}`}}>
+          <span style={{fontWeight:700,color:GREEN}}>Total da NFS-e</span>
+          <span style={{fontWeight:900,fontSize:20,color:GREEN}}>{fmtBRL(total)}</span>
+        </div>
+
+        <button onClick={save} disabled={!ok}
+          style={{width:'100%',background:ok?GREEN:'#e5e7eb',border:'none',borderRadius:14,padding:'15px',color:'white',fontSize:16,fontWeight:800,cursor:ok?'pointer':'default',fontFamily:'inherit'}}>
+          {editing ? '💾 Salvar alterações' : '🧾 Emitir NFS-e e lançar recebível'}
+        </button>
+        <div style={{fontSize:11,color:C.text2,textAlign:'center',marginTop:8}}>
+          Ao salvar: cria conta a receber automaticamente (sem movimentação de estoque)
         </div>
       </div>
     </div>
