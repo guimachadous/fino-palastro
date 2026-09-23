@@ -961,7 +961,6 @@ function App({ currentUserEmail, onLogout }) {
     {id:'contas',      lbl:'Contas',   icon:I.bill},
     {id:'estoque',     lbl:'Estoque',  icon:I.box},
     {id:'profits',     lbl:'Lucros',     icon:I.coin},
-    {id:'nfse',        lbl:'NFS-e',      icon:()=>'🧾'},
     {id:'consultas',   lbl:'Consultas',  icon:()=>'🔍'},
     {id:'contabil',    lbl:'Contábil',   icon:()=>'📊'},
     {id:'relatorios',  lbl:'Relatórios', icon:I.chart},
@@ -975,10 +974,10 @@ function App({ currentUserEmail, onLogout }) {
       <button onClick={()=>open('add_order')} style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 13px',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5,fontFamily:'inherit'}}>{I.plus('white',15)} Pedido</button>
     </div>;
     if (tab==='events')  return <button onClick={()=>open('add_event')} style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 13px',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5,fontFamily:'inherit'}}>{I.plus('white',15)} Evento</button>;
-    if (tab==='nfse') return <button onClick={()=>open('add_nfse')} style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 13px',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5,fontFamily:'inherit'}}>{I.plus('white',15)} NFS-e</button>;
     if (tab==='contas')  return <div style={{display:'flex',gap:6}}>
       <button onClick={()=>open('boletos_relatorio')} style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 12px',fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>💳 Boletos</button>
       <button onClick={()=>open('add_nf_saida')} style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 12px',fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>📄 NF Saída</button>
+      <button onClick={()=>open('add_nfse')} style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 12px',fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>🧾 NFS-e</button>
       <button onClick={()=>open('add_conta')} style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',borderRadius:10,color:'white',padding:'8px 12px',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5,fontFamily:'inherit'}}>{I.plus('white',15)} Conta</button>
     </div>;
     return null;
@@ -1065,7 +1064,6 @@ function App({ currentUserEmail, onLogout }) {
         {tab==='profits'     && <Lucros      ctx={ctx}/>}
         {tab==='contas'      && <Contas      ctx={ctx}/>}
         {tab==='estoque'     && <Estoque       ctx={ctx}/>}
-        {tab==='nfse'        && <NfseView        ctx={ctx}/>}
         {tab==='consultas'   && <ConsultasView  ctx={ctx}/>}
         {tab==='contabil'    && <ContabilView   ctx={ctx}/>}
         {tab==='relatorios'  && <RelatoriosView ctx={ctx}/>}
@@ -4953,14 +4951,14 @@ function Contas({ ctx }) {
 
       {/* Type chips */}
       <div style={{display:'flex',gap:6,marginBottom:14,flexWrap:'wrap'}}>
-        {[['receber','📥 A Receber'],['pagar','📤 A Pagar'],['nf','📄 NF Saída']].map(([k,l])=>(
+        {[['receber','📥 A Receber'],['pagar','📤 A Pagar'],['nf','📄 NF Saída'],['nfse','🧾 NFS-e']].map(([k,l])=>(
           <button key={k} className="chip" onClick={()=>setTipo(k)}
-            style={{background:tipo===k?(k==='receber'?C.green:k==='pagar'?C.red:'#7c3aed'):'white',
-              color:tipo===k?'white':C.text2,border:`1px solid ${tipo===k?(k==='receber'?C.green:k==='pagar'?C.red:'#7c3aed'):C.border}`,fontSize:13,padding:'8px 14px'}}>
+            style={{background:tipo===k?(k==='receber'?C.green:k==='pagar'?C.red:k==='nfse'?'#059669':'#7c3aed'):'white',
+              color:tipo===k?'white':C.text2,border:`1px solid ${tipo===k?(k==='receber'?C.green:k==='pagar'?C.red:k==='nfse'?'#059669':'#7c3aed'):C.border}`,fontSize:13,padding:'8px 14px'}}>
             {l}
           </button>
         ))}
-        {tipo!=='nf' && (
+        {tipo!=='nf' && tipo!=='nfse' && (
           <button onClick={()=>ctx.open('add_conta',{tipo})}
             style={{marginLeft:'auto',background:'transparent',border:`1.5px solid ${accent}`,borderRadius:20,padding:'8px 14px',color:accent,fontWeight:700,fontSize:13,cursor:'pointer',display:'flex',alignItems:'center',gap:4,fontFamily:'inherit'}}>
             {I.plus(accent,14)} Nova
@@ -4972,9 +4970,16 @@ function Contas({ ctx }) {
             {I.plus('#7c3aed',14)} Nova NF
           </button>
         )}
+        {tipo==='nfse' && (
+          <button onClick={()=>ctx.open('add_nfse')}
+            style={{marginLeft:'auto',background:'transparent',border:'1.5px solid #059669',borderRadius:20,padding:'8px 14px',color:'#059669',fontWeight:700,fontSize:13,cursor:'pointer',display:'flex',alignItems:'center',gap:4,fontFamily:'inherit'}}>
+            {I.plus('#059669',14)} Nova NFS-e
+          </button>
+        )}
       </div>
 
-      {tipo==='nf' && <NfSaidaList ctx={ctx}/>}
+      {tipo==='nf'   && <NfSaidaList ctx={ctx}/>}
+      {tipo==='nfse' && <NfseView    ctx={ctx}/>}
 
       {tipo!=='nf' && <>
       {/* View toggle */}
