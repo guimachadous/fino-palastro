@@ -4981,7 +4981,7 @@ function Contas({ ctx }) {
       {tipo==='nf'   && <NfSaidaList ctx={ctx}/>}
       {tipo==='nfse' && <NfseView    ctx={ctx}/>}
 
-      {tipo!=='nf' && <>
+      {tipo!=='nf' && tipo!=='nfse' && <>
       {/* View toggle */}
       <div style={{display:'flex',gap:8,marginBottom:14}}>
         {[['lista','📋 Lista'],['calendario','📅 Calendário']].map(([k,l])=>(
