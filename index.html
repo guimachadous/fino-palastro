@@ -1737,7 +1737,20 @@ function ImportBlocoModal({ ctx }) {
     })));
   };
 
+  // Mapear sabor não reconhecido inline: atualiza _sabor do item no preview
+  const mapearItemSabor = (pedidoIdx, itemIdx, saborId) => {
+    const sabor = saborId ? ctx.sabores.find(s=>s.id===saborId) : null;
+    setPreview(prev => prev.map((p,pi) => pi!==pedidoIdx ? p : {
+      ...p,
+      items: p.items.map((it,ii) => ii!==itemIdx ? it : { ...it, _sabor: sabor||null })
+    }));
+  };
+
+  // Verifica se ainda há itens não resolvidos nos pedidos novos
+  const temNaoReconhecidos = preview ? preview.some(p=>!p.duplicado&&p.items.some(it=>!it._sabor)) : false;
+
   const confirmar = () => {
+    if(temNaoReconhecidos) return; // bloqueia até todos estarem mapeados
     const novos = preview.filter(p => !p.duplicado);
     novos.forEach(p => {
       const itemsFinais = p.items.map(it => {
@@ -1818,15 +1831,31 @@ function ImportBlocoModal({ ctx }) {
                   </div>
                   <div style={{fontSize:11,marginTop:2}}>
                     {p.items.map((it,j)=>(
-                      <span key={j} style={{marginRight:8,display:'inline-block'}}>
-                        <span style={{color:it._sabor?C.green:C.red,fontWeight:700}}>{it.qty}x </span>
-                        <span style={{color:it._sabor?C.text2:'#dc2626'}}>
-                          {it._sabor ? it._sabor.nome : (it._rawName||it.productName)}
-                          {it._sabor && it._sabor.nome.toLowerCase()!==(it._rawName||'').toLowerCase() &&
-                            <span style={{color:'#9ca3af',fontSize:10}}> ← {it._rawName}</span>}
-                          {!it._sabor && <span style={{fontSize:10}}> ⚠️ não reconhecido</span>}
-                        </span>
-                      </span>
+                      <div key={j} style={{marginBottom:it._sabor?0:6,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                        <span style={{color:it._sabor?C.green:'#dc2626',fontWeight:700}}>{it.qty}x</span>
+                        {it._sabor ? (
+                          <span style={{color:C.text2}}>
+                            {it._sabor.nome}
+                            {it._sabor.nome.toLowerCase()!==(it._rawName||'').toLowerCase() &&
+                              <span style={{color:'#9ca3af',fontSize:10}}> ← {it._rawName}</span>}
+                          </span>
+                        ) : (
+                          <span style={{color:'#dc2626',display:'flex',alignItems:'center',gap:4,flexWrap:'wrap'}}>
+                            <span style={{fontStyle:'italic'}}>{it._rawName||it.productName}</span>
+                            <span style={{fontSize:10}}>⚠️ não reconhecido — selecione:</span>
+                            <select
+                              defaultValue=""
+                              onChange={e=>mapearItemSabor(i,j,e.target.value)}
+                              style={{fontSize:11,border:'1.5px solid #dc2626',borderRadius:6,padding:'2px 4px',background:'white',color:'#1a1a1a',maxWidth:200}}
+                            >
+                              <option value="" disabled>— qual sabor é? —</option>
+                              {ctx.sabores.map(s=>(
+                                <option key={s.id} value={s.id}>{s.nome}</option>
+                              ))}
+                            </select>
+                          </span>
+                        )}
+                      </div>
                     ))}
                   </div>
                   {p.delivery>0&&<div style={{fontSize:11,color:C.text2,marginTop:2}}>+R$ {p.delivery.toFixed(2).replace('.',',')} entrega</div>}
@@ -1851,10 +1880,13 @@ function ImportBlocoModal({ ctx }) {
                 style={{flex:1,background:'#f0ebe4',border:'none',borderRadius:12,padding:12,cursor:'pointer',fontWeight:700,fontFamily:'inherit'}}>
                 ← Voltar
               </button>
-              <button onClick={confirmar} disabled={!preview.some(p=>!p.duplicado)}
-                style={{flex:2,background:preview.some(p=>!p.duplicado)?C.red:'#e5e7eb',border:'none',borderRadius:12,padding:12,
-                  color:preview.some(p=>!p.duplicado)?'white':'#9ca3af',fontWeight:700,fontSize:14,cursor:preview.some(p=>!p.duplicado)?'pointer':'default',fontFamily:'inherit'}}>
-                ✓ Adicionar {preview.filter(p=>!p.duplicado).length} Pedido(s)
+              <button onClick={confirmar} disabled={!preview.some(p=>!p.duplicado)||temNaoReconhecidos}
+                style={{flex:2,background:(!preview.some(p=>!p.duplicado)||temNaoReconhecidos)?'#e5e7eb':C.red,border:'none',borderRadius:12,padding:12,
+                  color:(!preview.some(p=>!p.duplicado)||temNaoReconhecidos)?'#9ca3af':'white',fontWeight:700,fontSize:14,
+                  cursor:(!preview.some(p=>!p.duplicado)||temNaoReconhecidos)?'default':'pointer',fontFamily:'inherit'}}>
+                {temNaoReconhecidos
+                  ? '⚠️ Identifique os sabores acima'
+                  : `✓ Adicionar ${preview.filter(p=>!p.duplicado).length} Pedido(s)`}
               </button>
             </div>
           </>
@@ -2995,9 +3027,13 @@ function Lucros({ ctx }) {
   const totalCongeladaManual = manualCongeladaOnly.reduce((s,t)=>s+t.amount,0);
   const totalCongelada = totalCongeladaOrders + totalCongeladaManual;
 
-  // Conta sabores vendidos nos pedidos
+  // Conta sabores vendidos nos pedidos (apenas itens do catálogo)
   const flavorCount = {};
-  paidOrders.forEach(o=>{ if(o.items) o.items.forEach(i=>{ flavorCount[i.productName]=(flavorCount[i.productName]||0)+i.qty; }); });
+  paidOrders.forEach(o=>{ if(o.items) o.items.forEach(i=>{
+    const _sf=(i.productId&&ctx.sabores.find(s=>s.id===i.productId))||ctx.sabores.find(s=>s.nome.toLowerCase()===(i.productName||'').toLowerCase());
+    if(!_sf)return;
+    flavorCount[_sf.nome]=(flavorCount[_sf.nome]||0)+(i.qty||1);
+  }); });
   const totalPizzas = Object.values(flavorCount).reduce((s,v)=>s+v,0);
 
   // Eventos ao vivo pagos na semana
@@ -3902,7 +3938,11 @@ function RelatoriosView({ ctx }) {
   const maxMo = Math.max(...months.map(m=>m.inc), 1);
 
   const prodCnt = {};
-  activeOrds.forEach(o=>{ if(o.items) o.items.forEach(i=>{ prodCnt[i.productName]=(prodCnt[i.productName]||0)+i.qty; }); });
+  activeOrds.forEach(o=>{ if(o.items) o.items.forEach(i=>{
+    const _s=(i.productId&&ctx.sabores.find(s=>s.id===i.productId))||ctx.sabores.find(s=>s.nome.toLowerCase()===(i.productName||'').toLowerCase());
+    if(!_s)return;
+    prodCnt[_s.nome]=(prodCnt[_s.nome]||0)+(i.qty||1);
+  }); });
   const topProds = Object.entries(prodCnt).sort((a,b)=>b[1]-a[1]).slice(0,5);
 
   // ── Análise por período ──────────────────────────────────────────────────
@@ -3912,19 +3952,25 @@ function RelatoriosView({ ctx }) {
     if (relAte && s > relAte) return false;
     return true;
   };
+  // Resolve item para sabor canônico do catálogo (id primeiro, depois nome, null se não encontrar)
+  const resolverSaborItem = (i) => {
+    if (i.productId) { const s=ctx.sabores.find(s=>s.id===i.productId); if(s) return s; }
+    const n=(i.productName||i.nome||'').toLowerCase().trim();
+    return n ? (ctx.sabores.find(s=>s.nome.toLowerCase()===n)||null) : null;
+  };
   const vendasPeriodo = (() => {
     const tot = {};
     ctx.orders.filter(o=>o.status!=='cancelled'&&o.status!=='cancelado'&&inRange(o.createdAt))
       .forEach(o=>(o.items||[]).forEach(i=>{
-        const n=i.productName||i.nome||''; if(!n)return;
-        if(!tot[n])tot[n]={qty:0};
-        tot[n].qty+=(i.qty||1);
+        const s=resolverSaborItem(i); if(!s)return;
+        if(!tot[s.nome])tot[s.nome]={qty:0};
+        tot[s.nome].qty+=(i.qty||1);
       }));
     ctx.events.filter(e=>e.type==='express'&&e.status!=='cancelado'&&inRange(e.eventDate||e.createdAt))
       .forEach(e=>(e.items||[]).forEach(i=>{
-        const n=i.productName||i.nome||''; if(!n)return;
-        if(!tot[n])tot[n]={qty:0};
-        tot[n].qty+=(i.qty||1);
+        const s=resolverSaborItem(i); if(!s)return;
+        if(!tot[s.nome])tot[s.nome]={qty:0};
+        tot[s.nome].qty+=(i.qty||1);
       }));
     return Object.entries(tot).sort((a,b)=>b[1].qty-a[1].qty);
   })();
