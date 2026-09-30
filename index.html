@@ -3904,6 +3904,7 @@ function RelatoriosView({ ctx }) {
   const [relDe,  setRelDe]  = useState('');
   const [relAte, setRelAte] = useState('');
   const [relAba, setRelAba] = useState('sabores');
+  const [relTipo, setRelTipo] = useState('todos'); // filtro do bloco Vendas: todos|grande|mini|doce|antepasto
 
   const allIn  = ctx.trans.filter(t=>t.type==='entrada').reduce((s,t)=>s+t.amount,0);
   const allOut = ctx.trans.filter(t=>t.type==='saida'  ).reduce((s,t)=>s+t.amount,0);
@@ -3958,7 +3959,7 @@ function RelatoriosView({ ctx }) {
     const n=(i.productName||i.nome||'').toLowerCase().trim();
     return n ? (ctx.sabores.find(s=>s.nome.toLowerCase()===n)||null) : null;
   };
-  const vendasPeriodo = (() => {
+  const vendasPeriodoTodas = (() => {
     const tot = {};
     ctx.orders.filter(o=>o.status!=='cancelled'&&o.status!=='cancelado'&&inRange(o.createdAt))
       .forEach(o=>(o.items||[]).forEach(i=>{
@@ -3974,9 +3975,14 @@ function RelatoriosView({ ctx }) {
       }));
     return Object.entries(tot).sort((a,b)=>b[1].qty-a[1].qty);
   })();
+  const TIPOS_VENDA = [['todos','Todos'],['grande','Tradicional 30cm'],['mini','Mini'],['doce','Doce 30cm'],['antepasto','Antepastos']];
+  const catDoSabor = nome => (ctx.sabores.find(s=>s.nome===nome)||{}).cat;
+  const vendasPeriodo = relTipo==='todos'
+    ? vendasPeriodoTodas
+    : vendasPeriodoTodas.filter(([nome])=>catDoSabor(nome)===relTipo);
   const consumoMP = (() => {
     const cons = {};
-    vendasPeriodo.forEach(([nome,{qty}])=>{
+    vendasPeriodoTodas.forEach(([nome,{qty}])=>{
       const sabor = ctx.sabores.find(s=>s.nome.toLowerCase()===nome.toLowerCase());
       if (!sabor||!sabor.receita) return;
       sabor.receita.forEach(it=>{
@@ -4073,8 +4079,19 @@ function RelatoriosView({ ctx }) {
           ))}
         </div>
 
+        {relAba==='sabores'&&(
+          <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>
+            {TIPOS_VENDA.map(([k,l])=>(
+              <button key={k} className="chip" onClick={()=>setRelTipo(k)}
+                style={{background:relTipo===k?C.red:'white',color:relTipo===k?'white':C.text2,
+                  border:`1px solid ${relTipo===k?C.red:C.border}`,fontSize:11,padding:'6px 10px'}}>
+                {l}
+              </button>
+            ))}
+          </div>
+        )}
         {relAba==='sabores'&&(vendasPeriodo.length===0
-          ? <div style={{textAlign:'center',color:C.text2,fontSize:13,padding:'16px 0',fontStyle:'italic'}}>Nenhuma venda{(relDe||relAte)?' no período':' registrada'}</div>
+          ? <div style={{textAlign:'center',color:C.text2,fontSize:13,padding:'16px 0',fontStyle:'italic'}}>Nenhuma venda{relTipo!=='todos'?' deste tipo':''}{(relDe||relAte)?' no período':' registrada'}</div>
           : <>
               <div style={{display:'flex',justifyContent:'space-between',fontSize:10,color:C.text2,fontWeight:700,padding:'0 0 6px',borderBottom:`1px solid ${C.border}`,marginBottom:4}}>
                 <span>SABOR</span><span>QTD</span>
@@ -4086,14 +4103,14 @@ function RelatoriosView({ ctx }) {
                 </div>
               ))}
               <div style={{marginTop:10,fontSize:12,fontWeight:700,color:C.text2,textAlign:'right'}}>
-                Total: {vendasPeriodo.reduce((s,[,{qty}])=>s+qty,0)} pizzas
+                Total: {vendasPeriodo.reduce((s,[,{qty}])=>s+qty,0)} {relTipo==='antepasto'?'antepastos':relTipo==='todos'?'itens':'pizzas'}
               </div>
             </>
         )}
 
         {relAba==='mp'&&(consumoMP.length===0
           ? <div style={{textAlign:'center',color:C.text2,fontSize:13,padding:'16px 0',fontStyle:'italic'}}>
-              {vendasPeriodo.length===0?'Sem vendas no período':'Nenhum receituário cadastrado nos sabores vendidos'}
+              {vendasPeriodoTodas.length===0?'Sem vendas no período':'Nenhum receituário cadastrado nos sabores vendidos'}
             </div>
           : <>
               <div style={{fontSize:11,color:C.text2,marginBottom:8,fontStyle:'italic'}}>Estimativa baseada nos receituários e nas vendas do período.</div>
