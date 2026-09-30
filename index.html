@@ -3910,9 +3910,19 @@ function RelatoriosView({ ctx }) {
   const allOut = ctx.trans.filter(t=>t.type==='saida'  ).reduce((s,t)=>s+t.amount,0);
   const totalCaixa = ctx.openBal + allIn - allOut;
 
+  const [revDe,  setRevDe]  = useState('');
+  const [revAte, setRevAte] = useState('');
+  const temEntradas = ctx.trans.some(t=>t.type==='entrada');
   const catRev = {};
-  ctx.trans.forEach(t=>{ if(t.type==='entrada') catRev[t.category]=(catRev[t.category]||0)+t.amount; });
+  ctx.trans.forEach(t=>{
+    if(t.type!=='entrada') return;
+    const d=(t.date||'').slice(0,10);
+    if(revDe && d<revDe) return;
+    if(revAte && d>revAte) return;
+    catRev[t.category]=(catRev[t.category]||0)+t.amount;
+  });
   const maxRev = Math.max(...Object.values(catRev), 1);
+  const totalRev = Object.values(catRev).reduce((s,v)=>s+v,0);
 
   const cancelledOrds = ctx.orders.filter(o=>o.status==='cancelled'||o.status==='cancelado');
   const activeOrds    = ctx.orders.filter(o=>o.status!=='cancelled'&&o.status!=='cancelado');
@@ -4227,9 +4237,26 @@ function RelatoriosView({ ctx }) {
         <KPI lbl="Ticket Medio Evento" val={fmtBRL(avgEvt)} c={C.blue}/>
       </div>
 
-      {Object.keys(catRev).length>0&&(
+      {temEntradas&&(
         <div className="card" style={{marginBottom:14}}>
           <div className="section-label" style={{marginBottom:12}}>Receita por Categoria</div>
+          <div style={{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap',alignItems:'flex-end'}}>
+            <div style={{display:'flex',flexDirection:'column',flex:1,minWidth:120}}>
+              <label style={{fontSize:10,color:C.text2,fontWeight:700,marginBottom:3}}>DE</label>
+              <input type="date" className="input" style={{padding:'8px 10px',fontSize:12}} value={revDe} onChange={e=>setRevDe(e.target.value)}/>
+            </div>
+            <div style={{display:'flex',flexDirection:'column',flex:1,minWidth:120}}>
+              <label style={{fontSize:10,color:C.text2,fontWeight:700,marginBottom:3}}>ATÉ</label>
+              <input type="date" className="input" style={{padding:'8px 10px',fontSize:12}} value={revAte} onChange={e=>setRevAte(e.target.value)}/>
+            </div>
+            {(revDe||revAte)&&<button onClick={()=>{setRevDe('');setRevAte('');}}
+              style={{background:'#f5f0e8',border:`1px solid ${C.border}`,borderRadius:10,padding:'8px 12px',cursor:'pointer',fontSize:11,fontWeight:700,color:C.text2,fontFamily:'inherit'}}>
+              ✕ Limpar
+            </button>}
+          </div>
+          {Object.keys(catRev).length===0&&(
+            <div style={{textAlign:'center',color:C.text2,fontSize:13,padding:'12px 0',fontStyle:'italic'}}>Nenhuma receita no período</div>
+          )}
           {Object.entries(catRev).sort((a,b)=>b[1]-a[1]).map(([cat,val])=>(
             <div key={cat} style={{marginBottom:10}}>
               <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
@@ -4241,6 +4268,12 @@ function RelatoriosView({ ctx }) {
               </div>
             </div>
           ))}
+          {totalRev>0&&(
+            <div style={{marginTop:10,paddingTop:8,borderTop:`2px solid ${C.border}`,display:'flex',justifyContent:'space-between',fontSize:13,fontWeight:800}}>
+              <span style={{color:C.text2}}>Total{(revDe||revAte)?' no período':''}</span>
+              <span style={{color:C.green}}>{fmtBRL(totalRev)}</span>
+            </div>
+          )}
         </div>
       )}
 
