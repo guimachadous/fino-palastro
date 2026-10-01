@@ -548,12 +548,15 @@ function App({ currentUserEmail, onLogout }) {
   // transação financeira — NUNCA no campo `valor` da conta. O `valor`/`itens[].valor`
   // é o que comprasDeMP/ultimoPrecoMP usam para calcular o custo da matéria-prima
   // (CMV), então juros por atraso de pagamento não pode inflar esse custo.
-  const pagarConta = (id,desconto=0,juros=0) => {
+  // `data` = dia em que o dinheiro realmente saiu/entrou (pode ser anterior a hoje,
+  // quando o pagamento é confirmado no sistema dias depois).
+  const pagarConta = (id,desconto=0,juros=0,data=null) => {
     const conta = contas.find(c => c.id===id);
+    const dataPgto = data || today();
     if (conta) {
       const valorFinal = Math.max(0,(conta.valor||0)-(desconto||0)+(juros||0));
       addTrans({
-        date: today(),
+        date: dataPgto,
         type: conta.tipo==='receber' ? 'entrada' : 'saida',
         category: conta.categoria || (conta.tipo==='receber' ? 'Outros' : 'Outros'),
         amount: valorFinal,
@@ -562,7 +565,7 @@ function App({ currentUserEmail, onLogout }) {
         ref: conta.id
       });
     }
-    setContas(p => p.map(c => c.id===id?{...c,pago:true,pagoEm:today(),desconto:desconto||0,juros:juros||0,
+    setContas(p => p.map(c => c.id===id?{...c,pago:true,pagoEm:dataPgto,desconto:desconto||0,juros:juros||0,
       valorRecebido:Math.max(0,(c.valor||0)-(desconto||0)+(juros||0))}:c));
   };
   const delConta   = id => setContas(p => p.filter(c => c.id!==id));
@@ -6608,6 +6611,7 @@ function PagamentoModal({ ctx, conta }) {
   const { close } = ctx;
   const [desconto, setDesconto] = useState('');
   const [jurosStr, setJurosStr] = useState('');
+  const [dataPgto, setDataPgto] = useState(today());
   if (!conta) return null;
 
   const tipo = conta.tipo;
@@ -6621,7 +6625,7 @@ function PagamentoModal({ ctx, conta }) {
   const valorFinal = Math.max(0, valorOriginal - descNum + jurosNum);
 
   const confirmar = () => {
-    ctx.pagarConta(conta.id, descNum, jurosNum);
+    ctx.pagarConta(conta.id, descNum, jurosNum, dataPgto || today());
     close();
   };
 
@@ -6637,6 +6641,15 @@ function PagamentoModal({ ctx, conta }) {
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',background:'#f9f7f3',borderRadius:12,padding:'12px 14px',marginBottom:16}}>
           <span style={{fontSize:13,color:C.text2,fontWeight:600}}>Valor original</span>
           <span style={{fontSize:16,fontWeight:800}}>{fmtBRL(valorOriginal)}</span>
+        </div>
+
+        <label className="label">{tipo==='receber'?'Data em que o valor entrou':'Data em que o valor saiu'}</label>
+        <input className="input" type="date" value={dataPgto} max={today()}
+          onChange={e=>setDataPgto(e.target.value)} style={{marginBottom:4}}/>
+        <div style={{fontSize:11,color:C.text2,marginBottom:16}}>
+          {dataPgto && dataPgto!==today()
+            ? `O lançamento no caixa será feito em ${fmtDate(dataPgto)}.`
+            : 'Se o pagamento foi feito em outro dia, altere a data — o lançamento no caixa usa esta data.'}
         </div>
 
         <label className="label">Desconto concedido (opcional)</label>
