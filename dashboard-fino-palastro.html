@@ -434,10 +434,13 @@ function mk(id,cfg){const c=document.getElementById(id);if(!c||typeof Chart==='u
 const moneyTick=v=>v===0?'R$0':Math.abs(v)>=1000?'R$'+(v/1000).toLocaleString('pt-BR',{maximumFractionDigits:1})+'k':'R$'+v;
 const emptyDonut=(id,msg)=>mk(id,{type:'doughnut',data:{labels:[msg||'Sem dados'],datasets:[{data:[1],backgroundColor:['#e5e7eb'],borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,cutout:'60%',plugins:{legend:{position:'bottom'},tooltip:{enabled:false}}}});
 
-function renderKPIs({M,P}){
-  const hj=todayS(),saldo=saldoAte(hj);
+function renderKPIs({r,pr,M,P}){
+  // Saldo no fim do período analisado (ou hoje, se o período chega até hoje)
+  const hj=todayS(),fimPer=r&&r.end<hj?r.end:hj,saldo=saldoAte(fimPer);
+  const saldoAnt=pr?saldoAte(pr.end):null;
+  const saldoLbl=fimPer===hj?'Saldo em caixa hoje':'Saldo em caixa em '+fmtDate(fimPer);
   const margem=M.R>0?M.res/M.R:0,pm=P&&P.R>0?P.res/P.R:null;
-  const fom=firstOrderMap(),r=getRange();
+  const fom=firstOrderMap();
   const novos=[...M.clients].filter(k=>inR(fom[k],r)).length;
   document.getElementById('kpis').innerHTML=[
     kpi('Faturamento',fmtBRL(M.R),'green',`${M.inc.length} entradas`,P&&delta(M.R,P.R)),
@@ -447,7 +450,7 @@ function renderKPIs({M,P}){
     kpi('Pedidos',M.O.length,'blue',fmtBRL(M.oTot)+' em pedidos',P&&delta(M.O.length,P.O.length)),
     kpi('Ticket médio',fmtBRL(M.ticket),'','por pedido',P&&delta(M.ticket,P.ticket)),
     kpi('Clientes ativos',M.clients.size,'',`${novos} novo${novos!==1?'s':''} no período`,P&&delta(M.clients.size,P.clients.size)),
-    kpi('Saldo em caixa hoje',fmtBRL(saldo),saldo>=0?'green':'red','saldo inicial + lançamentos',''),
+    kpi(saldoLbl,fmtBRL(saldo),saldo>=0?'green':'red',fimPer===hj?'saldo inicial + lançamentos':'saldo ao final deste dia',saldoAnt!=null?delta(saldo,saldoAnt):''),
   ].join('');
 }
 
