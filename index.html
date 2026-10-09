@@ -6410,10 +6410,11 @@ function NfSaidaModal({ ctx, nf }) {
     return !q || (c.nome||'').toLowerCase().includes(q) || (c.razaoSocial||'').toLowerCase().includes(q);
   }).slice(0,8);
 
-  const estoqueNomes = Object.keys(ctx.estoqueData || {});
+  // Apenas os sabores cadastrados no estoque (não nomes históricos do estoqueData)
+  const estoqueNomes = (ctx.sabores || []).map(s => s.nome);
   const produtosFiltrados = (idx) => {
     const q = (itens[idx]?.nome||'').toLowerCase();
-    return estoqueNomes.filter(n=>n.toLowerCase().includes(q)).slice(0,8);
+    return estoqueNomes.filter(n=>n.toLowerCase().includes(q)).slice(0,10);
   };
 
   const selecionarCliente = (c) => {
@@ -6546,12 +6547,18 @@ function NfSaidaModal({ ctx, nf }) {
                 style={{marginBottom:0}}/>
               {showEstoqueNome===idx && produtosFiltrados(idx).length>0 && (
                 <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'white',border:`1px solid ${C.border}`,borderRadius:12,boxShadow:'0 8px 20px rgba(0,0,0,0.12)',zIndex:20,maxHeight:160,overflowY:'auto'}}>
-                  {produtosFiltrados(idx).map(n=>(
-                    <div key={n} onMouseDown={()=>updateItem(idx,{nome:n})}
-                      style={{padding:'8px 14px',fontSize:13,cursor:'pointer',borderBottom:`1px solid ${C.border}`}}>
-                      {n} <span style={{fontSize:11,color:C.text2}}>· estoque: {ctx.estoqueData[n]}</span>
-                    </div>
-                  ))}
+                  {produtosFiltrados(idx).map(n=>{
+                    const _s=(ctx.sabores||[]).find(s=>s.nome===n);
+                    const _saldo=ctx.estoqueData?.[n];
+                    return (
+                      <div key={n} onMouseDown={()=>updateItem(idx,{nome:n,valorUnit:_s?.preco?String(_s.preco):''})}
+                        style={{padding:'8px 14px',fontSize:13,cursor:'pointer',borderBottom:`1px solid ${C.border}`}}>
+                        {n}
+                        {_saldo!=null&&<span style={{fontSize:11,color:_saldo>0?C.green:C.text2,marginLeft:6}}>· saldo: {_saldo}</span>}
+                        {_s?.preco&&<span style={{fontSize:11,color:'#7c3aed',marginLeft:6}}>· R$ {Number(_s.preco).toFixed(2).replace('.',',')}</span>}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
