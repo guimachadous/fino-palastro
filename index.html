@@ -3977,14 +3977,25 @@ function RelatoriosView({ ctx }) {
     ctx.orders.filter(o=>o.status!=='cancelled'&&o.status!=='cancelado'&&inRange(o.createdAt))
       .forEach(o=>(o.items||[]).forEach(i=>{
         const s=resolverSaborItem(i); if(!s)return;
-        if(!tot[s.nome])tot[s.nome]={qty:0};
+        if(!tot[s.nome])tot[s.nome]={qty:0,valor:0};
         tot[s.nome].qty+=(i.qty||1);
+        tot[s.nome].valor+=(i.qty||1)*(i.unitPrice||0);
       }));
     ctx.events.filter(e=>e.type==='express'&&e.status!=='cancelado'&&inRange(e.eventDate||e.createdAt))
       .forEach(e=>(e.items||[]).forEach(i=>{
         const s=resolverSaborItem(i); if(!s)return;
-        if(!tot[s.nome])tot[s.nome]={qty:0};
+        if(!tot[s.nome])tot[s.nome]={qty:0,valor:0};
         tot[s.nome].qty+=(i.qty||1);
+        tot[s.nome].valor+=(i.qty||1)*(i.unitPrice||0);
+      }));
+    // Contas a receber com itens vendidos informados manualmente
+    (ctx.contas||[]).filter(c=>c.tipo==='receber'&&Array.isArray(c.itensVendidos)&&c.itensVendidos.length&&inRange(c.vencimento||c.criadoEm))
+      .forEach(c=>c.itensVendidos.forEach(iv=>{
+        const s=ctx.sabores.find(sb=>sb.id===iv.saborId||sb.nome===iv.nome);
+        if(!s)return;
+        if(!tot[s.nome])tot[s.nome]={qty:0,valor:0};
+        tot[s.nome].qty+=(iv.quantidade||0);
+        tot[s.nome].valor+=(iv.quantidade||0)*(iv.valorUnit||0);
       }));
     return Object.entries(tot).sort((a,b)=>b[1].qty-a[1].qty);
   })();
@@ -4107,16 +4118,22 @@ function RelatoriosView({ ctx }) {
           ? <div style={{textAlign:'center',color:C.text2,fontSize:13,padding:'16px 0',fontStyle:'italic'}}>Nenhuma venda{relTipo!=='todos'?' deste tipo':''}{(relDe||relAte)?' no período':' registrada'}</div>
           : <>
               <div style={{display:'flex',justifyContent:'space-between',fontSize:10,color:C.text2,fontWeight:700,padding:'0 0 6px',borderBottom:`1px solid ${C.border}`,marginBottom:4}}>
-                <span>SABOR</span><span>QTD</span>
+                <span>SABOR</span><span style={{display:'flex',gap:24}}><span>QTD</span><span>VALOR</span></span>
               </div>
-              {vendasPeriodo.map(([nome,{qty}],i)=>(
+              {vendasPeriodo.map(([nome,{qty,valor}],i)=>(
                 <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',borderBottom:i<vendasPeriodo.length-1?`1px solid ${C.border}`:'none'}}>
                   <span style={{fontSize:13,fontWeight:600}}>{nome}</span>
-                  <span style={{fontSize:14,fontWeight:900,color:C.red}}>{qty}x</span>
+                  <span style={{display:'flex',gap:16,alignItems:'center'}}>
+                    <span style={{fontSize:14,fontWeight:900,color:C.red}}>{qty}x</span>
+                    <span style={{fontSize:12,fontWeight:700,color:valor>0?C.green:C.text2,minWidth:60,textAlign:'right'}}>{valor>0?fmtBRL(valor):'—'}</span>
+                  </span>
                 </div>
               ))}
-              <div style={{marginTop:10,fontSize:12,fontWeight:700,color:C.text2,textAlign:'right'}}>
-                Total: {vendasPeriodo.reduce((s,[,{qty}])=>s+qty,0)} {relTipo==='antepasto'?'antepastos':relTipo==='todos'?'itens':'pizzas'}
+              <div style={{marginTop:10,fontSize:12,fontWeight:700,color:C.text2,textAlign:'right',display:'flex',justifyContent:'flex-end',gap:16,flexWrap:'wrap'}}>
+                <span>Total: {vendasPeriodo.reduce((s,[,{qty}])=>s+qty,0)} {relTipo==='antepasto'?'antepastos':relTipo==='todos'?'itens':'pizzas'}</span>
+                {vendasPeriodo.some(([,{valor}])=>valor>0)&&(
+                  <span style={{color:C.green}}>Faturado: {fmtBRL(vendasPeriodo.reduce((s,[,{valor}])=>s+(valor||0),0))}</span>
+                )}
               </div>
             </>
         )}
@@ -5480,6 +5497,10 @@ function ContaModal({ ctx, initTipo, conta }) {
   const [multiMode,   setMultiMode]   = useState(!!(conta?.itens && conta.itens.length));
   const [openItemIdx, setOpenItemIdx] = useState(null);
   const [codigoBarras,setCodigoBarras]= useState(conta?.codigoBarras || '');
+  // itens vendidos (apenas tipo='receber') — aparecem nos relatórios de vendas por sabor
+  const [itensVendidos,  setItensVendidos]  = useState(conta?.itensVendidos?.length ? conta.itensVendidos.map(it=>({...it})) : []);
+  const [showItensV,     setShowItensV]     = useState(!!(conta?.itensVendidos?.length));
+  const [openItensVIdx,  setOpenItensVIdx]  = useState(null);
 
   const cats = tipo==='pagar' ? ctx.catsPagar : ctx.catsReceber;
 
@@ -5489,7 +5510,9 @@ function ContaModal({ ctx, initTipo, conta }) {
 
   const ok = multiMode
     ? itensValidos.length>0
-    : (descricao.trim() && parseFloat(valor.replace(',','.'))>0);
+    : showItensV
+      ? (descricao.trim() && itensVendidosValidos.length>0)
+      : (descricao.trim() && parseFloat(valor.replace(',','.'))>0);
 
   const addCat = () => {
     const c = novaCat.trim();
@@ -5563,6 +5586,16 @@ function ContaModal({ ctx, initTipo, conta }) {
     }));
   };
 
+  // ── Itens Vendidos (somente tipo='receber') ───────────────────────────────
+  const itensVendidosValidos = itensVendidos.filter(iv => {
+    const s = (ctx.sabores||[]).find(s => s.id===iv.saborId || s.nome===iv.nome);
+    return s && toNum(iv.quantidade)>0 && toNum(iv.valorUnit)>0;
+  });
+  const totalVendidos = itensVendidosValidos.reduce((s,iv) => s + toNum(iv.quantidade)*toNum(iv.valorUnit), 0);
+  const addItemV    = () => setItensVendidos(p => [...p, {saborId:'',nome:'',quantidade:'',valorUnit:''}]);
+  const removeItemV = (idx) => setItensVendidos(p => p.filter((_,i)=>i!==idx));
+  const updateItemV = (idx, patch) => setItensVendidos(p => p.map((iv,i) => i!==idx ? iv : {...iv,...patch}));
+
   const save = () => {
     if (multiMode) {
       if (!itensValidos.length) return;
@@ -5585,13 +5618,18 @@ function ContaModal({ ctx, initTipo, conta }) {
     }
     if (!ok) return;
     const dados = {
-      tipo, descricao:descricao.trim(), valor:parseFloat(valor.replace(',','.'))||0,
+      tipo, descricao:descricao.trim(),
+      valor: showItensV ? totalVendidos : (parseFloat(valor.replace(',','.'))||0),
       vencimento, categoria:categoria||cats[0],
       cliente:cliente.trim(), notaFiscal:notaFiscal.trim(),
       codigoBarras: codigoBarras.trim(),
       quantidade: quantidade ? parseFloat(quantidade.replace(',','.')) : null,
       unidade: unidade || null,
       itens: null,
+      itensVendidos: showItensV ? itensVendidosValidos.map(iv=>({
+        saborId: iv.saborId, nome: iv.nome,
+        quantidade: toNum(iv.quantidade), valorUnit: toNum(iv.valorUnit),
+      })) : null,
     };
     if (editing) ctx.updConta(conta.id, dados);
     else ctx.addConta({...dados, origemTipo:'manual', pago:false, pagoEm:null});
@@ -5718,6 +5756,10 @@ function ContaModal({ ctx, initTipo, conta }) {
             {multiMode ? (
               <div className="input" style={{display:'flex',alignItems:'center',background:'#f7f7f7',color:C.text2,fontWeight:700,boxSizing:'border-box'}}>
                 {fmtBRL(totalItens)}
+              </div>
+            ) : showItensV ? (
+              <div className="input" style={{display:'flex',alignItems:'center',background:'#f7f7f7',color:C.text2,fontWeight:700,boxSizing:'border-box'}}>
+                {totalVendidos>0 ? fmtBRL(totalVendidos) : '—'}
               </div>
             ) : (
               <input className="input" type="number" inputMode="decimal" placeholder="0,00"
@@ -5917,6 +5959,77 @@ function ContaModal({ ctx, initTipo, conta }) {
               value={codigoBarras} onChange={e=>setCodigoBarras(e.target.value)}
               style={{marginBottom:22,fontFamily:'monospace',fontSize:12,letterSpacing:'0.5px'}}/>
           </>
+        )}
+
+        {/* ── Itens Vendidos (apenas Contas a Receber) ── */}
+        {tipo==='receber' && (
+          <div style={{marginBottom:18}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:showItensV?10:0}}>
+              <label className="label" style={{marginBottom:0}}>Itens vendidos (opcional)</label>
+              <button onClick={()=>{
+                  setShowItensV(v=>{
+                    if (!v && itensVendidos.length===0) setItensVendidos([{saborId:'',nome:'',quantidade:'',valorUnit:''}]);
+                    return !v;
+                  });
+                }}
+                style={{fontSize:12,background:showItensV?C.green:'transparent',border:`1px solid ${showItensV?C.green:C.border}`,
+                  borderRadius:10,padding:'5px 12px',cursor:'pointer',color:showItensV?'white':C.text2,fontWeight:700,fontFamily:'inherit'}}>
+                {showItensV ? '✓ Ativo' : '+ Informar sabores'}
+              </button>
+            </div>
+            {showItensV && (
+              <div style={{border:`1px solid ${C.border}`,borderRadius:12,padding:12}}>
+                {itensVendidos.map((iv,idx)=>{
+                  const saborFiltrados = (ctx.sabores||[]).filter(s=>s.nome.toLowerCase().includes((iv.nome||'').toLowerCase())).slice(0,10);
+                  const subTotal = toNum(iv.quantidade)*toNum(iv.valorUnit);
+                  return (
+                    <div key={idx} style={{marginBottom:idx<itensVendidos.length-1?10:0}}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:5}}>
+                        <span style={{fontSize:11,fontWeight:700,color:C.text2}}>Item {idx+1}</span>
+                        {itensVendidos.length>1&&(
+                          <button onClick={()=>removeItemV(idx)} style={{background:'transparent',border:'none',cursor:'pointer',color:'#ccc',fontSize:16,padding:0,lineHeight:1}}>×</button>
+                        )}
+                      </div>
+                      {/* Sabor autocomplete */}
+                      <div style={{position:'relative',marginBottom:6}}>
+                        <input className="input" placeholder="Sabor / produto"
+                          value={iv.nome}
+                          onChange={e=>updateItemV(idx,{nome:e.target.value,saborId:''})}
+                          onFocus={()=>setOpenItensVIdx(idx)}
+                          onBlur={()=>setTimeout(()=>setOpenItensVIdx(p=>p===idx?null:p),150)}
+                          style={{marginBottom:0}}/>
+                        {openItensVIdx===idx && saborFiltrados.length>0 && (
+                          <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'white',border:`1px solid ${C.border}`,borderRadius:12,boxShadow:'0 8px 20px rgba(0,0,0,0.12)',zIndex:20,maxHeight:180,overflowY:'auto'}}>
+                            {saborFiltrados.map((s,i)=>(
+                              <div key={s.id} onMouseDown={()=>{updateItemV(idx,{saborId:s.id,nome:s.nome,valorUnit:s.preco?String(s.preco):iv.valorUnit});setOpenItensVIdx(null);}}
+                                style={{padding:'10px 14px',fontSize:14,cursor:'pointer',display:'flex',justifyContent:'space-between',borderBottom:i<saborFiltrados.length-1?`1px solid ${C.border}`:'none'}}>
+                                <span>{s.nome}</span>
+                                {s.preco&&<span style={{fontSize:12,color:C.text2}}>{fmtBRL(s.preco)}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {/* Qtd + Valor unit */}
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6}}>
+                        <input className="input" type="number" inputMode="decimal" placeholder="Qtd"
+                          value={iv.quantidade} onChange={e=>updateItemV(idx,{quantidade:e.target.value})} style={{marginBottom:0}}/>
+                        <input className="input" type="number" inputMode="decimal" placeholder="R$ unit"
+                          value={iv.valorUnit} onChange={e=>updateItemV(idx,{valorUnit:e.target.value})} style={{marginBottom:0}}/>
+                        <div className="input" style={{background:'#f7f7f7',color:C.text2,fontWeight:700,display:'flex',alignItems:'center',boxSizing:'border-box',marginBottom:0,fontSize:13}}>
+                          {subTotal>0 ? fmtBRL(subTotal) : '—'}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:10}}>
+                  <button onClick={addItemV} style={{background:'transparent',border:`1px dashed ${C.border}`,borderRadius:10,padding:'6px 12px',cursor:'pointer',color:C.text2,fontWeight:700,fontSize:12,fontFamily:'inherit'}}>+ Item</button>
+                  <div style={{fontSize:13,color:C.text2}}>Total: <strong style={{color:C.green}}>{fmtBRL(totalVendidos)}</strong></div>
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
         <button onClick={save} disabled={!ok}
