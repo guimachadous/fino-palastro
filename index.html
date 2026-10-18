@@ -1903,9 +1903,31 @@ function ImportBlocoModal({ ctx }) {
 function Orders({ ctx }) {
   const [sf,setSf]=useState('active');
   const [busca,setBusca]=useState('');
+  const [dIni,setDIni]=useState('');
+  const [dFim,setDFim]=useState('');
+  const temPeriodo=!!(dIni||dFim);
   const list=ctx.orders.filter(o=>sf==='active'?['pending','confirmed'].includes(o.status):sf==='delivered'?o.status==='delivered':true)
     .filter(o=>!busca.trim()||(o.client||'').toLowerCase().includes(busca.toLowerCase().trim()))
+    .filter(o=>{
+      if(!temPeriodo) return true;
+      const d=(o.deliveryDate||'').slice(0,10);
+      if(!d) return false;
+      if(dIni&&d<dIni) return false;
+      if(dFim&&d>dFim) return false;
+      return true;
+    })
     .sort((a,b)=>b.createdAt>a.createdAt?1:-1);
+  const filtroAtivo=temPeriodo||!!busca.trim();
+  const resumoValidos=list.filter(o=>o.status!=='cancelled'&&o.status!=='cancelado');
+  const resumoTotal=resumoValidos.reduce((s,o)=>s+(Number(o.total)||0),0);
+  const resumoPizzas=resumoValidos.reduce((s,o)=>s+(o.items||[]).reduce((t,i)=>t+(i.qty||0),0),0);
+  const atalhoPeriodo=(tipo)=>{
+    const h=new Date(); const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    if(tipo==='mes'){ setDIni(iso(new Date(h.getFullYear(),h.getMonth(),1))); setDFim(iso(new Date(h.getFullYear(),h.getMonth()+1,0))); }
+    if(tipo==='mesAnt'){ setDIni(iso(new Date(h.getFullYear(),h.getMonth()-1,1))); setDFim(iso(new Date(h.getFullYear(),h.getMonth(),0))); }
+    if(tipo==='30d'){ setDIni(iso(new Date(h.getFullYear(),h.getMonth(),h.getDate()-29))); setDFim(iso(h)); }
+    setSf('all');
+  };
 
   const CatTag = ({cat})=>(
     <span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:20,background:cat==='grande'?'#fff5f5':'#fffbeb',color:cat==='grande'?C.red:'#b45309',border:`1px solid ${cat==='grande'?'#fca5a5':'#fde68a'}`}}>
@@ -1926,6 +1948,36 @@ function Orders({ ctx }) {
           style={{paddingLeft:36,marginBottom:0}}/>
         {busca&&<button onClick={()=>setBusca('')} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:16,color:C.text2,padding:0,lineHeight:1}}>×</button>}
       </div>
+
+      {/* ── Filtro por período (data de entrega) ── */}
+      <div style={{marginTop:-4,marginBottom:14}}>
+        <div style={{fontSize:11,fontWeight:700,color:C.text2,textTransform:'uppercase',marginBottom:6}}>Período (data de entrega)</div>
+        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          <input type="date" className="input" value={dIni} onChange={e=>{setDIni(e.target.value);if(e.target.value)setSf('all');}} style={{flex:1,minWidth:0,marginBottom:0}} aria-label="Data inicial"/>
+          <span style={{fontSize:12,color:C.text2}}>até</span>
+          <input type="date" className="input" value={dFim} onChange={e=>{setDFim(e.target.value);if(e.target.value)setSf('all');}} style={{flex:1,minWidth:0,marginBottom:0}} aria-label="Data final"/>
+        </div>
+        <div className="scroll-row" style={{marginTop:8}}>
+          {[['mes','Este mês'],['mesAnt','Mês passado'],['30d','Últimos 30 dias']].map(([k,l])=>(
+            <button key={k} className="chip" onClick={()=>atalhoPeriodo(k)} style={{background:'white',color:C.text2,border:`1px solid ${C.border}`}}>{l}</button>
+          ))}
+          {temPeriodo&&<button className="chip" onClick={()=>{setDIni('');setDFim('');}} style={{background:'white',color:C.red,border:`1px solid ${C.red}`}}>× Limpar período</button>}
+        </div>
+      </div>
+
+      {filtroAtivo&&list.length>0&&(
+        <div className="card" style={{marginBottom:14,background:'#fafafa',border:'1.5px solid #e5e7eb',cursor:'default'}}>
+          <div style={{fontSize:11,fontWeight:700,color:C.text2,textTransform:'uppercase',marginBottom:6}}>
+            Resumo{busca.trim()?` · ${busca.trim()}`:''}{temPeriodo?` · ${dIni?fmtDate(dIni):'início'} a ${dFim?fmtDate(dFim):'hoje'}`:''}
+          </div>
+          <div style={{display:'flex',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
+            <div><div style={{fontWeight:900,fontSize:18}}>{resumoValidos.length}</div><div style={{fontSize:11,color:C.text2}}>pedido{resumoValidos.length!==1?'s':''}</div></div>
+            <div><div style={{fontWeight:900,fontSize:18}}>{resumoPizzas}</div><div style={{fontSize:11,color:C.text2}}>pizza{resumoPizzas!==1?'s':''}</div></div>
+            <div style={{textAlign:'right'}}><div style={{fontWeight:900,fontSize:18,color:C.red}}>{fmtBRL(resumoTotal)}</div><div style={{fontSize:11,color:C.text2}}>total</div></div>
+          </div>
+          {list.length!==resumoValidos.length&&<div style={{fontSize:11,color:C.text2,marginTop:6}}>Cancelados não entram no resumo.</div>}
+        </div>
+      )}
 
       {list.length===0?(
         <div style={{textAlign:'center',padding:'48px 20px'}}>
