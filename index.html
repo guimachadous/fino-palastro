@@ -1907,7 +1907,7 @@ function Orders({ ctx }) {
   const [dFim,setDFim]=useState('');
   const temPeriodo=!!(dIni||dFim);
   const list=ctx.orders.filter(o=>sf==='active'?['pending','confirmed'].includes(o.status):sf==='delivered'?o.status==='delivered':true)
-    .filter(o=>!busca.trim()||(o.client||'').toLowerCase().includes(busca.toLowerCase().trim()))
+    .filter(o=>{const q=busca.toLowerCase().trim().replace(/^#/,'');return !q||(o.client||'').toLowerCase().includes(q)||String(o.numeroPedido||'')===q;})
     .filter(o=>{
       if(!temPeriodo) return true;
       const d=(o.deliveryDate||'').slice(0,10);
@@ -1944,7 +1944,7 @@ function Orders({ ctx }) {
       </div>
       <div style={{position:'relative',marginBottom:14}}>
         <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',fontSize:15,color:C.text2,pointerEvents:'none'}}>🔍</span>
-        <input className="input" placeholder="Buscar por nome..." value={busca} onChange={e=>setBusca(e.target.value)}
+        <input className="input" placeholder="Buscar por nome ou nº do pedido..." value={busca} onChange={e=>setBusca(e.target.value)}
           style={{paddingLeft:36,marginBottom:0}}/>
         {busca&&<button onClick={()=>setBusca('')} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:16,color:C.text2,padding:0,lineHeight:1}}>×</button>}
       </div>
@@ -1991,6 +1991,7 @@ function Orders({ ctx }) {
             <div style={{flex:1,marginRight:12}}>
               <div style={{fontWeight:800,fontSize:15,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
                 {o.client}
+                {o.numeroPedido&&<span style={{fontSize:11,background:'#f3f4f6',color:C.text2,fontWeight:700,padding:'2px 7px',borderRadius:10,flexShrink:0}}>#{o.numeroPedido}</span>}
                 {o.source==='whatsapp'&&<span style={{fontSize:10,background:'#dcfce7',color:'#15803d',fontWeight:700,padding:'2px 7px',borderRadius:10,flexShrink:0}}>📱 WA</span>}
               </div>
               <div style={{fontSize:12,color:C.text2,marginTop:2}}>{o.items.reduce((s,i)=>s+i.qty,0)} pizza(s) · Entrega: {fmtDate(o.deliveryDate)}</div>
