@@ -233,7 +233,7 @@ td{padding:8px 6px;border-bottom:1px solid #f1ece4;}tr:last-child td{border-bott
 
   <section id="produtos">
     <div class="sec-title">&#127829; Produtos</div>
-    <div class="sec-sub">Somente sabores cadastrados no estoque do sistema. Itens com nome não reconhecido ficam de fora (ver alerta).</div>
+    <div class="sec-sub">Somente sabores cadastrados no estoque do sistema. Nomes abreviados (ex.: "calab", "queijos", "mini lombinho") são reconhecidos automaticamente; o que não for reconhecido fica de fora (ver alerta).</div>
     <div class="grid2e mb16">
       <div class="card"><div class="card-title">Mix por tipo de produto <span class="tag">unidades</span></div><div class="chart-wrap"><canvas id="c-mix"></canvas></div></div>
       <div class="card"><div class="card-title">Curva ABC de sabores <span class="tag">faturamento estimado</span></div><div id="abc-box"></div></div>
@@ -250,6 +250,18 @@ td{padding:8px 6px;border-bottom:1px solid #f1ece4;}tr:last-child td{border-bott
       <div class="card"><div class="rank-cat-title"><span>&#127874; Doce 30cm</span><span id="rt-doce"></span></div><div id="rank-doce"></div></div>
       <div class="card"><div class="rank-cat-title"><span>&#127829; Mini</span><span id="rt-mini"></span></div><div id="rank-mini"></div></div>
       <div class="card"><div class="rank-cat-title"><span>&#129360; Antepastos</span><span id="rt-antepasto"></span></div><div id="rank-antepasto"></div></div>
+    </div>
+    <div class="card" id="comparativo" style="margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px">
+        <div class="card-title" style="margin:0">&#128197; Comparativo mês a mês por sabor <span class="tag">independe do período escolhido</span></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <div class="rank-toggle"><button class="active" id="cmp-qty" onclick="setCmp('mode','qty')">Unidades</button><button id="cmp-rev" onclick="setCmp('mode','rev')">Faturamento</button></div>
+          <div class="rank-toggle"><button class="active" id="cmp-m6" onclick="setCmp('n',6)">6 meses</button><button id="cmp-m12" onclick="setCmp('n',12)">12 meses</button></div>
+          <div class="rank-toggle"><button onclick="exportCmpCSV()">&#11015; Excel (CSV)</button></div>
+        </div>
+      </div>
+      <div class="muted" style="font-size:11.5px;margin-bottom:8px">Pedidos (exceto cancelados) + eventos express, pela data do pedido. A coluna Var. compara o mês atual com o anterior (o mês atual ainda está em andamento).</div>
+      <div class="scroll" style="max-height:620px;overflow-x:auto"><table id="cmp-table"></table></div>
     </div>
   </section>
 
@@ -370,7 +382,46 @@ function resolveItem(i){
   let s=i.productId&&SIDX.byId[i.productId];
   if(s&&s.cat==='evento')s=SIDX.byName[norm(s.nome)]||s;
   if(!s)s=SIDX.byName[norm(i.productName||i.nome)];
+  if(!s){const a=aliasSabor(i.productName||i.nome);if(a)s=SIDX.byName[norm(a)];}
   return s||null;
+}
+// Nomes digitados à mão ("calab", "queijos", "mini lombinho", "Brie 58,00") → sabor do cadastro.
+// Só entra quando o nome não bate exatamente com nenhum sabor. Sabores fora do cadastro continuam de fora.
+function aliasSabor(raw){
+  const t=norm(raw);if(!t)return null;
+  const h=re=>re.test(t);
+  if(h(/\bminis?\b/)){
+    if(h(/pistache/)||(h(/file/)&&!h(/cheddar|chedarr/)))return null; // mini pistache / mini filé gorgonzola / mini filé c/ brie: não cadastrados
+    if(h(/cheddar|chedarr/))return 'Mini Pizza File com Cheddar';
+    if(h(/brie/))return 'Mini Brie com Geleia de Pimenta';
+    if(h(/marg/))return 'Mini Margherita Especial';
+    if(h(/laka/))return 'Mini Laka c/ Geleia de Frutas Vermelhas com Mirtilo';
+    if(h(/lomb/))return 'Mini Lombinho com Catupiry e Alho Poro';
+    if(h(/calab/))return 'Mini Calabresa com Gorgonzola';
+    if(h(/mus+arela/))return 'Mini Pizza (Somente mussarela)';
+    if(h(/pepperoni/))return 'Mini Pizza Pepperoni';
+    if(h(/queijos|formaggi/))return 'Mini Pizza 4 Formaggi';
+    if(h(/frango/))return 'Mini Pizza Frango';
+    return null;
+  }
+  if(h(/\+|brownie|banana|parma|bacon/))return null;
+  if(h(/rotolina/))return 'Rotolinas de Linguiça Blumenau com Gorgonzola 1KG';
+  if(h(/pistache|pitasche/))return 'Pistache com nutella';
+  if(h(/chocolate/))return 'Chocolate Preto e Branco com Morango';
+  if(h(/laka/))return h(/oreo/)?'Laka Oreo':'Laka com Geleia de Frutas Vermelhas e Mirtilo';
+  if(h(/file/)&&h(/brie/))return 'Filé com Brie';
+  if(h(/file/)&&h(/cheddar|chedarr/))return 'File com Cheddar';
+  if(h(/file/)&&h(/gorg/))return 'File com Gorgonzola';
+  if(h(/brie/))return 'Brie com Geleia de Pimenta';
+  if(h(/ling/))return h(/catupiry/)?null:'Linguica Blumenau com Gorgonzola';
+  if(h(/lomb/))return 'Lombinho com Catupiry e Alho Poro';
+  if(h(/marg/))return 'Margherita Especial';
+  if(h(/calab/))return h(/sem gorg|cebola/)?'Calabresa sem Gorgonzola':'Calabresa com Gorgonzola';
+  if(h(/queijos|formaggi/))return '4 Formaggi';
+  if(h(/frango/))return 'Frango com Catupiry';
+  if(h(/pepperoni/))return 'Pepperoni';
+  if(h(/kinder/))return 'Kinder';
+  return null;
 }
 // Vendas por sabor em um intervalo (pedidos + eventos express)
 function productStats(r){
@@ -425,7 +476,7 @@ function render(){
   const ctx={r,pr,M,P};
   [['KPIs',renderKPIs],['Alertas',renderAlerts],['Linhas',renderSegments],['Mensal',renderMonthly],['Tabela mensal',renderMonthTable],['DRE',renderDRE],
    ['Vendas dia',renderOrdersDay],['Semana',renderWeekday],['Novos',renderNewRet],['Status',renderOrdersStatus],['Pagamento',renderPayment],
-   ['Top clientes',renderTopClients],['Reativar',renderRisk],['Pedidos',renderOrdersTable],['Produtos',renderProducts],
+   ['Top clientes',renderTopClients],['Reativar',renderRisk],['Pedidos',renderOrdersTable],['Produtos',renderProducts],['Comparativo',renderComparativo],
    ['Caixa',renderCash],['Contas',renderContas],['Estoque',renderEstoque]]
    .forEach(([nm,fn])=>{try{fn(ctx);}catch(e){console.error('[render]',nm,e);}});
 }
@@ -683,6 +734,47 @@ function renderEstoque(){
     let sit;if(q<0)sit='<span class="badge gray">Negativo · lançar produção</span>';else if(q===0)sit=v>0?'<span class="badge red">Ruptura</span>':'<span class="badge gray">Zerado</span>';
     else if(cob==null)sit='<span class="badge gray">Sem vendas</span>';else if(cob<7)sit='<span class="badge red">Produzir já</span>';else if(cob<15)sit='<span class="badge amber">Atenção</span>';else sit='<span class="badge green">OK</span>';
     return `<tr><td class="b">${esc(s.nome)}</td><td class="muted">${CAT_LBL[s.cat]||esc(s.cat)}</td><td class="r b ${q<0?'neg':''}">${q}</td><td class="r">${v?fmtNum(v):'—'}</td><td class="r">${cob==null?'—':Math.round(cob)+' dias'}</td><td>${sit}</td></tr>`;}).join('');
+}
+
+// ── Comparativo mês a mês por sabor ──
+let cmpMode='qty',cmpN=6,cmpData=null;
+function setCmp(k,v){if(k==='mode')cmpMode=v;else cmpN=v;
+  ['qty','rev'].forEach(x=>document.getElementById('cmp-'+x).classList.toggle('active',cmpMode===x));
+  [6,12].forEach(x=>document.getElementById('cmp-m'+x).classList.toggle('active',cmpN===x));
+  try{renderComparativo();}catch(e){console.error(e);}}
+function compData(){
+  let ms=lastMonths(cmpN);const per=ms.map(m=>productStats(monthRange(m.k)));
+  let first=per.findIndex(p=>Object.keys(p.st).length);if(first<0)first=ms.length-1;
+  ms=ms.slice(first);const P=per.slice(first);
+  const cats=['grande','doce','mini','antepasto'],rows={};
+  P.forEach((p,i)=>Object.entries(p.st).forEach(([n,x])=>{const c=cats.includes(x.cat)?x.cat:'grande';
+    rows[n]=rows[n]||{n,c,q:ms.map(()=>0),r:ms.map(()=>0)};rows[n].q[i]+=x.qty;rows[n].r[i]+=x.rev;}));
+  return {ms,cats,rows:Object.values(rows),miss:P.map(p=>p.miss)};
+}
+function renderComparativo(){
+  const D2=cmpData=compData(),{ms,cats}=D2,k=cmpMode==='qty'?'q':'r',L=ms.length;
+  const f=v=>!v?'<span class="muted">–</span>':(k==='q'?v:fmtBRL0(v));
+  const vr=(a,b)=>{if(L<2)return '';if(!b)return a?'<span class="pos">novo</span>':'';const d=(a-b)/b;return `<span class="${d>=0?'pos':'neg'}">${d>=0?'▲':'▼'} ${Math.round(Math.abs(d)*100)}%</span>`;};
+  let h=`<thead><tr><th>Sabor</th>${ms.map(m=>`<th class="r">${m.l}</th>`).join('')}<th class="r">Total</th><th class="r">Var.</th></tr></thead><tbody>`;
+  cats.forEach(c=>{
+    const R=D2.rows.filter(x=>x.c===c).sort((a,b)=>b[k][L-1]-a[k][L-1]||b[k].reduce((s,v)=>s+v,0)-a[k].reduce((s,v)=>s+v,0));
+    if(!R.length)return;
+    const tot=ms.map((_,i)=>R.reduce((s,x)=>s+x[k][i],0));
+    h+=`<tr><td colspan="${L+3}" style="padding-top:12px;font-weight:800;color:${CAT_CLR[c]}">${CAT_LBL[c]}</td></tr>`;
+    h+=R.map(x=>`<tr><td>${esc(x.n)}</td>${x[k].map(v=>`<td class="r">${f(v)}</td>`).join('')}<td class="r b">${f(x[k].reduce((s,v)=>s+v,0))}</td><td class="r" style="font-size:11px">${vr(x[k][L-1],x[k][L-2])}</td></tr>`).join('');
+    h+=`<tr style="background:#faf6f0"><td class="b">Total ${CAT_LBL[c]}</td>${tot.map(v=>`<td class="r b">${f(v)}</td>`).join('')}<td class="r b">${f(tot.reduce((s,v)=>s+v,0))}</td><td class="r" style="font-size:11px">${vr(tot[L-1],tot[L-2])}</td></tr>`;
+  });
+  if(D2.miss.some(Boolean))h+=`<tr><td class="muted" style="font-size:11px">Itens não reconhecidos (fora da tabela)</td>${D2.miss.map(v=>`<td class="r muted" style="font-size:11px">${v||'–'}</td>`).join('')}<td></td><td></td></tr>`;
+  document.getElementById('cmp-table').innerHTML=h+'</tbody>';
+}
+function exportCmpCSV(){
+  const d=cmpData||compData(),{ms}=d,n=v=>String(Math.round(v*100)/100).replace('.',',');
+  const lines=[['Categoria','Sabor',...ms.map(m=>m.l+' (un.)'),'Total (un.)',...ms.map(m=>m.l+' (R$)'),'Total (R$)']];
+  d.cats.forEach(c=>d.rows.filter(x=>x.c===c).sort((a,b)=>b.q.reduce((s,v)=>s+v,0)-a.q.reduce((s,v)=>s+v,0)).forEach(x=>
+    lines.push([CAT_LBL[c],x.n,...x.q.map(n),n(x.q.reduce((s,v)=>s+v,0)),...x.r.map(n),n(x.r.reduce((s,v)=>s+v,0))])));
+  const csv='\ufeff'+lines.map(l=>l.map(v=>/[;"\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v).join(';')).join('\r\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download='comparativo-sabores-'+todayS()+'.csv';document.body.appendChild(a);a.click();a.remove();
 }
 
 function setRankMode(m){rankMode=m;document.getElementById('rank-qty').classList.toggle('active',m==='qty');document.getElementById('rank-rev').classList.toggle('active',m==='rev');try{renderProducts({r:getRange()});}catch(e){console.error(e);}}
