@@ -119,6 +119,24 @@ td{padding:8px 6px;border-bottom:1px solid #f1ece4;}tr:last-child td{border-bott
 @media(max-width:1100px){.grid2,.grid2e,.grid3{grid-template-columns:1fr;}.kpi-grid{grid-template-columns:repeat(2,1fr);}.alerts{grid-template-columns:1fr;}}
 @media(max-width:900px){.layout{flex-direction:column;}.sidebar{position:static;width:100%;height:auto;padding:14px 16px;}.sidebar nav{display:flex;flex-wrap:wrap;gap:4px;}.sidebar .foot{display:none;}.main{padding:18px 16px 60px;}.controls{align-items:flex-start;}}
 @media(max-width:600px){.kpi-grid,.seg-grid,.grid4{grid-template-columns:1fr;}}
+
+/* ── DETAIL DRAWER ── */
+#detail-overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:900;opacity:0;pointer-events:none;transition:opacity .22s;}
+#detail-overlay.open{opacity:1;pointer-events:all;}
+#detail-drawer{position:fixed;top:0;right:0;width:520px;max-width:100vw;height:100vh;background:#fff;z-index:901;box-shadow:-6px 0 32px rgba(0,0,0,.18);transform:translateX(110%);transition:transform .25s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;}
+#detail-drawer.open{transform:translateX(0);}
+#detail-drawer .dr-head{display:flex;justify-content:space-between;align-items:flex-start;padding:20px 20px 14px;border-bottom:1px solid var(--border);flex-shrink:0;}
+#detail-drawer .dr-title{font-size:15px;font-weight:800;line-height:1.3;}
+#detail-drawer .dr-sub{font-size:11px;color:var(--text2);margin-top:3px;}
+#detail-drawer .dr-close{background:var(--cream);border:1px solid var(--border);border-radius:10px;padding:6px 11px;font-size:18px;line-height:1;cursor:pointer;flex-shrink:0;margin-left:12px;}
+#detail-drawer .dr-body{flex:1;overflow-y:auto;padding:0 0 24px;}
+#detail-drawer table{width:100%;border-collapse:collapse;font-size:12.5px;}
+#detail-drawer th{position:sticky;top:0;background:#fff;padding:9px 14px;border-bottom:2px solid var(--border);font-size:10.5px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;}
+#detail-drawer td{padding:8px 14px;border-bottom:1px solid #f1ece4;}
+#detail-drawer tr:last-child td{border-bottom:none;}
+#detail-drawer .dr-foot{padding:12px 14px;border-top:2px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:#faf7f2;}
+#detail-drawer .dr-total{font-size:14px;font-weight:800;}
+.chart-clickable{cursor:pointer;}
 </style>
 </head>
 <body>
@@ -233,7 +251,7 @@ td{padding:8px 6px;border-bottom:1px solid #f1ece4;}tr:last-child td{border-bott
 
   <section id="produtos">
     <div class="sec-title">&#127829; Produtos</div>
-    <div class="sec-sub">Somente sabores cadastrados no estoque do sistema. Nomes abreviados (ex.: "calab", "queijos", "mini lombinho") são reconhecidos automaticamente; o que não for reconhecido fica de fora (ver alerta).</div>
+    <div class="sec-sub">Somente sabores cadastrados no estoque do sistema. Itens com nome não reconhecido ficam de fora (ver alerta).</div>
     <div class="grid2e mb16">
       <div class="card"><div class="card-title">Mix por tipo de produto <span class="tag">unidades</span></div><div class="chart-wrap"><canvas id="c-mix"></canvas></div></div>
       <div class="card"><div class="card-title">Curva ABC de sabores <span class="tag">faturamento estimado</span></div><div id="abc-box"></div></div>
@@ -250,18 +268,6 @@ td{padding:8px 6px;border-bottom:1px solid #f1ece4;}tr:last-child td{border-bott
       <div class="card"><div class="rank-cat-title"><span>&#127874; Doce 30cm</span><span id="rt-doce"></span></div><div id="rank-doce"></div></div>
       <div class="card"><div class="rank-cat-title"><span>&#127829; Mini</span><span id="rt-mini"></span></div><div id="rank-mini"></div></div>
       <div class="card"><div class="rank-cat-title"><span>&#129360; Antepastos</span><span id="rt-antepasto"></span></div><div id="rank-antepasto"></div></div>
-    </div>
-    <div class="card" id="comparativo" style="margin-top:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px">
-        <div class="card-title" style="margin:0">&#128197; Comparativo mês a mês por sabor <span class="tag">independe do período escolhido</span></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <div class="rank-toggle"><button class="active" id="cmp-qty" onclick="setCmp('mode','qty')">Unidades</button><button id="cmp-rev" onclick="setCmp('mode','rev')">Faturamento</button></div>
-          <div class="rank-toggle"><button class="active" id="cmp-m6" onclick="setCmp('n',6)">6 meses</button><button id="cmp-m12" onclick="setCmp('n',12)">12 meses</button></div>
-          <div class="rank-toggle"><button onclick="exportCmpCSV()">&#11015; Excel (CSV)</button></div>
-        </div>
-      </div>
-      <div class="muted" style="font-size:11.5px;margin-bottom:8px">Pedidos (exceto cancelados) + eventos express, pela data do pedido. A coluna Var. compara o mês atual com o anterior (o mês atual ainda está em andamento).</div>
-      <div class="scroll" style="max-height:620px;overflow-x:auto"><table id="cmp-table"></table></div>
     </div>
   </section>
 
@@ -289,6 +295,23 @@ td{padding:8px 6px;border-bottom:1px solid #f1ece4;}tr:last-child td{border-bott
 </main>
 </div>
 
+<!-- ── DETAIL DRAWER ── -->
+<div id="detail-overlay" onclick="closeDrawer()"></div>
+<div id="detail-drawer">
+  <div class="dr-head">
+    <div>
+      <div class="dr-title" id="dr-title">Detalhes</div>
+      <div class="dr-sub" id="dr-sub"></div>
+    </div>
+    <button class="dr-close" onclick="closeDrawer()">×</button>
+  </div>
+  <div class="dr-body" id="dr-body"></div>
+  <div class="dr-foot">
+    <span id="dr-count" style="font-size:11px;color:var(--text2)"></span>
+    <span class="dr-total" id="dr-total"></span>
+  </div>
+</div>
+
 <script>
 const _cfg={apiKey:"AIzaSyAyZ-ILP1zyLPyHM1JZOxp9cmCAF6X4JCI",authDomain:"fino-palastro.firebaseapp.com",projectId:"fino-palastro",storageBucket:"fino-palastro.firebasestorage.app",messagingSenderId:"723898018846",appId:"1:723898018846:web:39f731562a8fb8c52c920f"};
 firebase.initializeApp(_cfg);const fsdb=firebase.firestore();
@@ -296,6 +319,26 @@ firebase.initializeApp(_cfg);const fsdb=firebase.firestore();
 // ── DADOS ─────────────────────────────────────────────────────────
 const D={trans:[],orders:[],events:[],contas:[],estoque:{},sabores:[],clientes:[],catTipo:{},openBal:0};
 let periodDays=30,customStart=null,customEnd=null,rankMode='qty',charts={},SIDX={byId:{},byName:{}};
+
+// ── DETAIL DRAWER ─────────────────────────────────────────────────
+function openDrawer(title, sub, rows, total){
+  document.getElementById('dr-title').textContent=title;
+  document.getElementById('dr-sub').textContent=sub||'';
+  document.getElementById('dr-count').textContent=rows.length+' lançamento'+(rows.length!==1?'s':'');
+  document.getElementById('dr-total').innerHTML='Total: <span style="color:var(--green)">'+fmtBRL(total)+'</span>';
+  document.getElementById('dr-body').innerHTML=rows.length===0
+    ?'<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px">Nenhum lançamento no período.</div>'
+    :`<table><thead><tr><th>Data</th><th>Descrição</th><th class="r">Valor</th></tr></thead><tbody>`
+     +rows.map(r=>`<tr><td style="white-space:nowrap">${fmtDate(r.date||r.createdAt||'')}</td><td>${r.desc||''}</td><td class="r b">${fmtBRL(r.val)}</td></tr>`).join('')
+     +`</tbody></table>`;
+  document.getElementById('detail-overlay').classList.add('open');
+  document.getElementById('detail-drawer').classList.add('open');
+}
+function closeDrawer(){
+  document.getElementById('detail-overlay').classList.remove('open');
+  document.getElementById('detail-drawer').classList.remove('open');
+}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer();});
 
 // ── HELPERS ───────────────────────────────────────────────────────
 const fmtBRL=v=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
@@ -382,46 +425,7 @@ function resolveItem(i){
   let s=i.productId&&SIDX.byId[i.productId];
   if(s&&s.cat==='evento')s=SIDX.byName[norm(s.nome)]||s;
   if(!s)s=SIDX.byName[norm(i.productName||i.nome)];
-  if(!s){const a=aliasSabor(i.productName||i.nome);if(a)s=SIDX.byName[norm(a)];}
   return s||null;
-}
-// Nomes digitados à mão ("calab", "queijos", "mini lombinho", "Brie 58,00") → sabor do cadastro.
-// Só entra quando o nome não bate exatamente com nenhum sabor. Sabores fora do cadastro continuam de fora.
-function aliasSabor(raw){
-  const t=norm(raw);if(!t)return null;
-  const h=re=>re.test(t);
-  if(h(/\bminis?\b/)){
-    if(h(/pistache/)||(h(/file/)&&!h(/cheddar|chedarr/)))return null; // mini pistache / mini filé gorgonzola / mini filé c/ brie: não cadastrados
-    if(h(/cheddar|chedarr/))return 'Mini Pizza File com Cheddar';
-    if(h(/brie/))return 'Mini Brie com Geleia de Pimenta';
-    if(h(/marg/))return 'Mini Margherita Especial';
-    if(h(/laka/))return 'Mini Laka c/ Geleia de Frutas Vermelhas com Mirtilo';
-    if(h(/lomb/))return 'Mini Lombinho com Catupiry e Alho Poro';
-    if(h(/calab/))return 'Mini Calabresa com Gorgonzola';
-    if(h(/mus+arela/))return 'Mini Pizza (Somente mussarela)';
-    if(h(/pepperoni/))return 'Mini Pizza Pepperoni';
-    if(h(/queijos|formaggi/))return 'Mini Pizza 4 Formaggi';
-    if(h(/frango/))return 'Mini Pizza Frango';
-    return null;
-  }
-  if(h(/\+|brownie|banana|parma|bacon/))return null;
-  if(h(/rotolina/))return 'Rotolinas de Linguiça Blumenau com Gorgonzola 1KG';
-  if(h(/pistache|pitasche/))return 'Pistache com nutella';
-  if(h(/chocolate/))return 'Chocolate Preto e Branco com Morango';
-  if(h(/laka/))return h(/oreo/)?'Laka Oreo':'Laka com Geleia de Frutas Vermelhas e Mirtilo';
-  if(h(/file/)&&h(/brie/))return 'Filé com Brie';
-  if(h(/file/)&&h(/cheddar|chedarr/))return 'File com Cheddar';
-  if(h(/file/)&&h(/gorg/))return 'File com Gorgonzola';
-  if(h(/brie/))return 'Brie com Geleia de Pimenta';
-  if(h(/ling/))return h(/catupiry/)?null:'Linguica Blumenau com Gorgonzola';
-  if(h(/lomb/))return 'Lombinho com Catupiry e Alho Poro';
-  if(h(/marg/))return 'Margherita Especial';
-  if(h(/calab/))return h(/sem gorg|cebola/)?'Calabresa sem Gorgonzola':'Calabresa com Gorgonzola';
-  if(h(/queijos|formaggi/))return '4 Formaggi';
-  if(h(/frango/))return 'Frango com Catupiry';
-  if(h(/pepperoni/))return 'Pepperoni';
-  if(h(/kinder/))return 'Kinder';
-  return null;
 }
 // Vendas por sabor em um intervalo (pedidos + eventos express)
 function productStats(r){
@@ -476,7 +480,7 @@ function render(){
   const ctx={r,pr,M,P};
   [['KPIs',renderKPIs],['Alertas',renderAlerts],['Linhas',renderSegments],['Mensal',renderMonthly],['Tabela mensal',renderMonthTable],['DRE',renderDRE],
    ['Vendas dia',renderOrdersDay],['Semana',renderWeekday],['Novos',renderNewRet],['Status',renderOrdersStatus],['Pagamento',renderPayment],
-   ['Top clientes',renderTopClients],['Reativar',renderRisk],['Pedidos',renderOrdersTable],['Produtos',renderProducts],['Comparativo',renderComparativo],
+   ['Top clientes',renderTopClients],['Reativar',renderRisk],['Pedidos',renderOrdersTable],['Produtos',renderProducts],
    ['Caixa',renderCash],['Contas',renderContas],['Estoque',renderEstoque]]
    .forEach(([nm,fn])=>{try{fn(ctx);}catch(e){console.error('[render]',nm,e);}});
 }
@@ -548,8 +552,33 @@ function renderMonthly(){
   const ds=LINES.map(L=>({label:L.l,data:ms.map(m=>D.trans.filter(t=>t.type==='entrada'&&(t.date||'').startsWith(m.k)&&lineOf(t)===L.k).reduce((s,t)=>s+num(t.amount),0)),backgroundColor:L.c+'cc',borderRadius:3,stack:'rev',order:2}));
   const desp=ms.map(m=>sumAmt(D.trans.filter(t=>t.type==='saida'&&(t.date||'').startsWith(m.k))));
   mk('c-monthly',{type:'bar',data:{labels:ms.map(m=>m.l),datasets:[...ds,{type:'line',label:'Despesas',data:desp,borderColor:'#c82518',backgroundColor:'#c82518',borderWidth:2,pointRadius:3,tension:.3,stack:'desp',order:1}]},
-    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'bottom',labels:{font:{size:10},padding:8,boxWidth:12}},tooltip:{callbacks:{label:c=>' '+c.dataset.label+': '+fmtBRL(c.raw),footer:items=>{const rev=items.filter(i=>i.dataset.stack==='rev').reduce((s,i)=>s+i.raw,0);return 'Receita total: '+fmtBRL(rev);}}}},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+    onClick(evt,els){
+      if(!els.length)return;
+      const mIdx=els[0].index;
+      const m=ms[mIdx];
+      // Determine if click was on expense line vs revenue bars
+      const clickedDatasetIdx=els[0].datasetIndex;
+      const clickedDataset=charts['c-monthly']?.data?.datasets?.[clickedDatasetIdx];
+      const isDesp=clickedDataset&&clickedDataset.stack==='desp';
+      if(isDesp){
+        // Show expense detail for that month
+        const rows=D.trans.filter(t=>t.type==='saida'&&(t.date||'').startsWith(m.k))
+          .sort((a,b)=>(b.date||'')>(a.date||'')?1:-1)
+          .map(t=>({date:t.date,desc:(t.category||'Sem categoria')+(t.description?': '+t.description:''),val:num(t.amount)}));
+        openDrawer('Despesas · '+m.l,'Todas as saídas do mês · clique fora para fechar',rows,desp[mIdx]);
+      } else {
+        // Show all revenue detail for that month grouped by line
+        const inc=D.trans.filter(t=>t.type==='entrada'&&(t.date||'').startsWith(m.k));
+        const rows=inc.sort((a,b)=>(b.date||'')>(a.date||'')?1:-1)
+          .map(t=>({date:t.date,desc:(LINES.find(L=>lineOf(t)===L.k)||{l:'Outro'}).l+(t.description?': '+t.description:t.category?' · '+t.category:''),val:num(t.amount)}));
+        const total=inc.reduce((s,t)=>s+num(t.amount),0);
+        openDrawer('Receitas · '+m.l,'Todas as entradas do mês · clique fora para fechar',rows,total);
+      }
+    },
+    plugins:{legend:{position:'bottom',labels:{font:{size:10},padding:8,boxWidth:12}},tooltip:{callbacks:{label:c=>' '+c.dataset.label+': '+fmtBRL(c.raw),footer:items=>{const rev=items.filter(i=>i.dataset.stack==='rev').reduce((s,i)=>s+i.raw,0);return 'Receita total: '+fmtBRL(rev);}}}},
     scales:{x:{stacked:true,grid:{display:false},ticks:{font:{size:10}}},y:{stacked:true,grid:{color:'#f1ece4'},ticks:{callback:moneyTick,font:{size:10}}}}}});
+  const cvs=document.getElementById('c-monthly');if(cvs)cvs.classList.add('chart-clickable');
 }
 
 function renderMonthTable(){
@@ -558,7 +587,7 @@ function renderMonthTable(){
     return `<tr><td class="b">${m.l}</td><td class="r">${fmtBRL(x.R)}</td><td class="r">${fmtBRL(x.S)}</td><td class="r b ${x.res>=0?'pos':'neg'}">${fmtBRL(x.res)}</td><td class="r ${mg!=null&&mg<0?'neg':''}">${mg==null?'—':fmtPct(mg)}</td><td class="r">${x.O.length}</td><td class="r">${fmtBRL(x.ticket)}</td><td class="r">${x.clients.size}</td></tr>`;}).join('');
 }
 
-function renderDRE({M}){
+function renderDRE({M,r}){
   const d=dre(M.out,M.R),R=M.R,pc=v=>R>0?fmtPct(v/R):'—';
   const row=(l,v,cls)=>`<tr class="${cls||''}"><td>${l}</td><td class="r">${fmtBRL(v)}</td><td class="r muted">${pc(v)}</td></tr>`;
   let h=row('Receita bruta (entradas)',R,'tot');
@@ -578,8 +607,20 @@ function renderDRE({M}){
   if(!ent.length)return mk('c-desp-cat',{type:'bar',data:{labels:['Sem despesas'],datasets:[{data:[0]}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}}});
   const clr=c=>D.catTipo[c]==='fixo'?'#1d4ed8':D.catTipo[c]==='variavel'?'#b45309':'#94a3b8';
   mk('c-desp-cat',{type:'bar',data:{labels:ent.map(e=>e[0]),datasets:[{data:ent.map(e=>e[1]),backgroundColor:ent.map(e=>clr(e[0])),borderRadius:4}]},
-    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+fmtBRL(c.raw)+' · '+(D.catTipo[c.label]==='fixo'?'fixo':D.catTipo[c.label]==='variavel'?'variável':'não classificado')+(R>0?' · '+fmtPct(c.raw/R)+' da receita':'')}}},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+    onClick(evt,els){
+      if(!els.length)return;
+      const cat=ent[els[0].index][0];
+      const rows=D.trans.filter(t=>t.type==='saida'&&(t.category||'Sem categoria')===cat&&inR(t.date,r))
+        .sort((a,b)=>(b.date||'')>(a.date||'')?1:-1)
+        .map(t=>({date:t.date,desc:t.description||t.desc||'—',val:num(t.amount)}));
+      const tipo=D.catTipo[cat]==='fixo'?'Fixo':D.catTipo[cat]==='variavel'?'Variável':'Sem classificação';
+      openDrawer('Despesas · '+cat,'Tipo: '+tipo+' · clique fora para fechar',rows,ent[els[0].index][1]);
+    },
+    plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+fmtBRL(c.raw)+' · '+(D.catTipo[c.label]==='fixo'?'fixo':D.catTipo[c.label]==='variavel'?'variável':'não classificado')+(R>0?' · '+fmtPct(c.raw/R)+' da receita':'')}}},
     scales:{x:{grid:{color:'#f1ece4'},ticks:{callback:moneyTick,font:{size:10}}},y:{grid:{display:false},ticks:{font:{size:10.5}}}}}});
+  // Visual hint
+  const cvs=document.getElementById('c-desp-cat');if(cvs)cvs.classList.add('chart-clickable');
 }
 
 function renderOrdersDay({M}){
@@ -734,47 +775,6 @@ function renderEstoque(){
     let sit;if(q<0)sit='<span class="badge gray">Negativo · lançar produção</span>';else if(q===0)sit=v>0?'<span class="badge red">Ruptura</span>':'<span class="badge gray">Zerado</span>';
     else if(cob==null)sit='<span class="badge gray">Sem vendas</span>';else if(cob<7)sit='<span class="badge red">Produzir já</span>';else if(cob<15)sit='<span class="badge amber">Atenção</span>';else sit='<span class="badge green">OK</span>';
     return `<tr><td class="b">${esc(s.nome)}</td><td class="muted">${CAT_LBL[s.cat]||esc(s.cat)}</td><td class="r b ${q<0?'neg':''}">${q}</td><td class="r">${v?fmtNum(v):'—'}</td><td class="r">${cob==null?'—':Math.round(cob)+' dias'}</td><td>${sit}</td></tr>`;}).join('');
-}
-
-// ── Comparativo mês a mês por sabor ──
-let cmpMode='qty',cmpN=6,cmpData=null;
-function setCmp(k,v){if(k==='mode')cmpMode=v;else cmpN=v;
-  ['qty','rev'].forEach(x=>document.getElementById('cmp-'+x).classList.toggle('active',cmpMode===x));
-  [6,12].forEach(x=>document.getElementById('cmp-m'+x).classList.toggle('active',cmpN===x));
-  try{renderComparativo();}catch(e){console.error(e);}}
-function compData(){
-  let ms=lastMonths(cmpN);const per=ms.map(m=>productStats(monthRange(m.k)));
-  let first=per.findIndex(p=>Object.keys(p.st).length);if(first<0)first=ms.length-1;
-  ms=ms.slice(first);const P=per.slice(first);
-  const cats=['grande','doce','mini','antepasto'],rows={};
-  P.forEach((p,i)=>Object.entries(p.st).forEach(([n,x])=>{const c=cats.includes(x.cat)?x.cat:'grande';
-    rows[n]=rows[n]||{n,c,q:ms.map(()=>0),r:ms.map(()=>0)};rows[n].q[i]+=x.qty;rows[n].r[i]+=x.rev;}));
-  return {ms,cats,rows:Object.values(rows),miss:P.map(p=>p.miss)};
-}
-function renderComparativo(){
-  const D2=cmpData=compData(),{ms,cats}=D2,k=cmpMode==='qty'?'q':'r',L=ms.length;
-  const f=v=>!v?'<span class="muted">–</span>':(k==='q'?v:fmtBRL0(v));
-  const vr=(a,b)=>{if(L<2)return '';if(!b)return a?'<span class="pos">novo</span>':'';const d=(a-b)/b;return `<span class="${d>=0?'pos':'neg'}">${d>=0?'▲':'▼'} ${Math.round(Math.abs(d)*100)}%</span>`;};
-  let h=`<thead><tr><th>Sabor</th>${ms.map(m=>`<th class="r">${m.l}</th>`).join('')}<th class="r">Total</th><th class="r">Var.</th></tr></thead><tbody>`;
-  cats.forEach(c=>{
-    const R=D2.rows.filter(x=>x.c===c).sort((a,b)=>b[k][L-1]-a[k][L-1]||b[k].reduce((s,v)=>s+v,0)-a[k].reduce((s,v)=>s+v,0));
-    if(!R.length)return;
-    const tot=ms.map((_,i)=>R.reduce((s,x)=>s+x[k][i],0));
-    h+=`<tr><td colspan="${L+3}" style="padding-top:12px;font-weight:800;color:${CAT_CLR[c]}">${CAT_LBL[c]}</td></tr>`;
-    h+=R.map(x=>`<tr><td>${esc(x.n)}</td>${x[k].map(v=>`<td class="r">${f(v)}</td>`).join('')}<td class="r b">${f(x[k].reduce((s,v)=>s+v,0))}</td><td class="r" style="font-size:11px">${vr(x[k][L-1],x[k][L-2])}</td></tr>`).join('');
-    h+=`<tr style="background:#faf6f0"><td class="b">Total ${CAT_LBL[c]}</td>${tot.map(v=>`<td class="r b">${f(v)}</td>`).join('')}<td class="r b">${f(tot.reduce((s,v)=>s+v,0))}</td><td class="r" style="font-size:11px">${vr(tot[L-1],tot[L-2])}</td></tr>`;
-  });
-  if(D2.miss.some(Boolean))h+=`<tr><td class="muted" style="font-size:11px">Itens não reconhecidos (fora da tabela)</td>${D2.miss.map(v=>`<td class="r muted" style="font-size:11px">${v||'–'}</td>`).join('')}<td></td><td></td></tr>`;
-  document.getElementById('cmp-table').innerHTML=h+'</tbody>';
-}
-function exportCmpCSV(){
-  const d=cmpData||compData(),{ms}=d,n=v=>String(Math.round(v*100)/100).replace('.',',');
-  const lines=[['Categoria','Sabor',...ms.map(m=>m.l+' (un.)'),'Total (un.)',...ms.map(m=>m.l+' (R$)'),'Total (R$)']];
-  d.cats.forEach(c=>d.rows.filter(x=>x.c===c).sort((a,b)=>b.q.reduce((s,v)=>s+v,0)-a.q.reduce((s,v)=>s+v,0)).forEach(x=>
-    lines.push([CAT_LBL[c],x.n,...x.q.map(n),n(x.q.reduce((s,v)=>s+v,0)),...x.r.map(n),n(x.r.reduce((s,v)=>s+v,0))])));
-  const csv='\ufeff'+lines.map(l=>l.map(v=>/[;"\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v).join(';')).join('\r\n');
-  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
-  a.download='comparativo-sabores-'+todayS()+'.csv';document.body.appendChild(a);a.click();a.remove();
 }
 
 function setRankMode(m){rankMode=m;document.getElementById('rank-qty').classList.toggle('active',m==='qty');document.getElementById('rank-rev').classList.toggle('active',m==='rev');try{renderProducts({r:getRange()});}catch(e){console.error(e);}}
