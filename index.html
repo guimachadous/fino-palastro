@@ -1058,6 +1058,9 @@ function App({ currentUserEmail, onLogout }) {
       {/* ── VENCIDOS BANNER ── */}
       <VencidosBanner ctx={ctx} alertKey={alertKey} setAlertKey={setAlertKey} setTab={setTab}/>
 
+      {/* ── LEMBRETE DIA 9 ── */}
+      <LembreteDia9Banner alertKey={alertKey} setAlertKey={setAlertKey}/>
+
       {/* ── CONTENT ── */}
       <div style={{padding:'16px 14px'}}>
         {tab==='dashboard'   && <Dashboard   ctx={ctx}/>}
@@ -1157,6 +1160,49 @@ function VencidosBanner({ ctx, alertKey, setAlertKey, setTab }) {
         <button onClick={openWA}
           style={{flex:1,background:'#25D366',border:'none',borderRadius:10,color:'white',padding:'9px 0',fontWeight:700,fontSize:13,cursor:'pointer',fontFamily:'inherit',display:'flex',alignItems:'center',justifyContent:'center',gap:5}}>
           {I.wa('white',15)} Enviar Resumo
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── LEMBRETE DIA 9 ─────────────────────────────────────────────────────────
+function LembreteDia9Banner({ alertKey, setAlertKey }) {
+  const now  = new Date();
+  const dia  = now.getDate();
+  const mes  = String(now.getMonth() + 1).padStart(2, '0');
+  const ano  = now.getFullYear();
+  const chave = `dismissed_dia9_${ano}-${mes}`;
+
+  // Mostrar do dia 8 ao dia 15 (1 dia de aviso + janela de até 6 dias depois)
+  if (dia < 8 || dia > 15) return null;
+  if (alertKey === chave) return null;
+
+  const ehHoje = dia === 9;
+  const diasAtrasado = dia > 9 ? dia - 9 : 0;
+
+  return (
+    <div style={{margin:'8px 14px 4px',background:'linear-gradient(135deg,#92400e,#b45309)',borderRadius:16,padding:'14px 16px',boxShadow:'0 4px 18px rgba(180,83,9,0.4)'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+        <div style={{display:'flex',alignItems:'flex-start',gap:10,flex:1}}>
+          <span style={{fontSize:22,flexShrink:0}}>{diasAtrasado > 0 ? '⚠️' : '🔔'}</span>
+          <div>
+            <div style={{color:'white',fontWeight:800,fontSize:14,lineHeight:1.25}}>
+              {ehHoje
+                ? 'Hoje é dia 9 — lembrete de pagamento!'
+                : diasAtrasado === 1
+                  ? 'Lembrete de ontem ainda pendente'
+                  : `Lembrete: ${diasAtrasado} dias após o dia 9`
+              }
+            </div>
+            <div style={{color:'rgba(255,255,255,0.85)',fontSize:12.5,marginTop:4,lineHeight:1.5}}>
+              Verificar e pagar: <strong style={{color:'white'}}>🏠 Aluguel · ⚡ Energia · 💧 Água</strong>
+            </div>
+          </div>
+        </div>
+        <button onClick={()=>setAlertKey(chave)}
+          style={{background:'rgba(255,255,255,0.18)',border:'none',borderRadius:8,color:'white',padding:'4px 10px',cursor:'pointer',fontSize:14,fontFamily:'inherit',flexShrink:0,marginLeft:8}}>
+          ✓ Ok
         </button>
       </div>
     </div>
@@ -1903,31 +1949,9 @@ function ImportBlocoModal({ ctx }) {
 function Orders({ ctx }) {
   const [sf,setSf]=useState('active');
   const [busca,setBusca]=useState('');
-  const [dIni,setDIni]=useState('');
-  const [dFim,setDFim]=useState('');
-  const temPeriodo=!!(dIni||dFim);
   const list=ctx.orders.filter(o=>sf==='active'?['pending','confirmed'].includes(o.status):sf==='delivered'?o.status==='delivered':true)
-    .filter(o=>{const q=busca.toLowerCase().trim().replace(/^#/,'');return !q||(o.client||'').toLowerCase().includes(q)||String(o.numeroPedido||'')===q;})
-    .filter(o=>{
-      if(!temPeriodo) return true;
-      const d=(o.deliveryDate||'').slice(0,10);
-      if(!d) return false;
-      if(dIni&&d<dIni) return false;
-      if(dFim&&d>dFim) return false;
-      return true;
-    })
+    .filter(o=>!busca.trim()||(o.client||'').toLowerCase().includes(busca.toLowerCase().trim()))
     .sort((a,b)=>b.createdAt>a.createdAt?1:-1);
-  const filtroAtivo=temPeriodo||!!busca.trim();
-  const resumoValidos=list.filter(o=>o.status!=='cancelled'&&o.status!=='cancelado');
-  const resumoTotal=resumoValidos.reduce((s,o)=>s+(Number(o.total)||0),0);
-  const resumoPizzas=resumoValidos.reduce((s,o)=>s+(o.items||[]).reduce((t,i)=>t+(i.qty||0),0),0);
-  const atalhoPeriodo=(tipo)=>{
-    const h=new Date(); const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    if(tipo==='mes'){ setDIni(iso(new Date(h.getFullYear(),h.getMonth(),1))); setDFim(iso(new Date(h.getFullYear(),h.getMonth()+1,0))); }
-    if(tipo==='mesAnt'){ setDIni(iso(new Date(h.getFullYear(),h.getMonth()-1,1))); setDFim(iso(new Date(h.getFullYear(),h.getMonth(),0))); }
-    if(tipo==='30d'){ setDIni(iso(new Date(h.getFullYear(),h.getMonth(),h.getDate()-29))); setDFim(iso(h)); }
-    setSf('all');
-  };
 
   const CatTag = ({cat})=>(
     <span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:20,background:cat==='grande'?'#fff5f5':'#fffbeb',color:cat==='grande'?C.red:'#b45309',border:`1px solid ${cat==='grande'?'#fca5a5':'#fde68a'}`}}>
@@ -1944,40 +1968,10 @@ function Orders({ ctx }) {
       </div>
       <div style={{position:'relative',marginBottom:14}}>
         <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',fontSize:15,color:C.text2,pointerEvents:'none'}}>🔍</span>
-        <input className="input" placeholder="Buscar por nome ou nº do pedido..." value={busca} onChange={e=>setBusca(e.target.value)}
+        <input className="input" placeholder="Buscar por nome..." value={busca} onChange={e=>setBusca(e.target.value)}
           style={{paddingLeft:36,marginBottom:0}}/>
         {busca&&<button onClick={()=>setBusca('')} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:16,color:C.text2,padding:0,lineHeight:1}}>×</button>}
       </div>
-
-      {/* ── Filtro por período (data de entrega) ── */}
-      <div style={{marginTop:-4,marginBottom:14}}>
-        <div style={{fontSize:11,fontWeight:700,color:C.text2,textTransform:'uppercase',marginBottom:6}}>Período (data de entrega)</div>
-        <div style={{display:'flex',gap:8,alignItems:'center'}}>
-          <input type="date" className="input" value={dIni} onChange={e=>{setDIni(e.target.value);if(e.target.value)setSf('all');}} style={{flex:1,minWidth:0,marginBottom:0}} aria-label="Data inicial"/>
-          <span style={{fontSize:12,color:C.text2}}>até</span>
-          <input type="date" className="input" value={dFim} onChange={e=>{setDFim(e.target.value);if(e.target.value)setSf('all');}} style={{flex:1,minWidth:0,marginBottom:0}} aria-label="Data final"/>
-        </div>
-        <div className="scroll-row" style={{marginTop:8}}>
-          {[['mes','Este mês'],['mesAnt','Mês passado'],['30d','Últimos 30 dias']].map(([k,l])=>(
-            <button key={k} className="chip" onClick={()=>atalhoPeriodo(k)} style={{background:'white',color:C.text2,border:`1px solid ${C.border}`}}>{l}</button>
-          ))}
-          {temPeriodo&&<button className="chip" onClick={()=>{setDIni('');setDFim('');}} style={{background:'white',color:C.red,border:`1px solid ${C.red}`}}>× Limpar período</button>}
-        </div>
-      </div>
-
-      {filtroAtivo&&list.length>0&&(
-        <div className="card" style={{marginBottom:14,background:'#fafafa',border:'1.5px solid #e5e7eb',cursor:'default'}}>
-          <div style={{fontSize:11,fontWeight:700,color:C.text2,textTransform:'uppercase',marginBottom:6}}>
-            Resumo{busca.trim()?` · ${busca.trim()}`:''}{temPeriodo?` · ${dIni?fmtDate(dIni):'início'} a ${dFim?fmtDate(dFim):'hoje'}`:''}
-          </div>
-          <div style={{display:'flex',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
-            <div><div style={{fontWeight:900,fontSize:18}}>{resumoValidos.length}</div><div style={{fontSize:11,color:C.text2}}>pedido{resumoValidos.length!==1?'s':''}</div></div>
-            <div><div style={{fontWeight:900,fontSize:18}}>{resumoPizzas}</div><div style={{fontSize:11,color:C.text2}}>pizza{resumoPizzas!==1?'s':''}</div></div>
-            <div style={{textAlign:'right'}}><div style={{fontWeight:900,fontSize:18,color:C.red}}>{fmtBRL(resumoTotal)}</div><div style={{fontSize:11,color:C.text2}}>total</div></div>
-          </div>
-          {list.length!==resumoValidos.length&&<div style={{fontSize:11,color:C.text2,marginTop:6}}>Cancelados não entram no resumo.</div>}
-        </div>
-      )}
 
       {list.length===0?(
         <div style={{textAlign:'center',padding:'48px 20px'}}>
@@ -1991,7 +1985,6 @@ function Orders({ ctx }) {
             <div style={{flex:1,marginRight:12}}>
               <div style={{fontWeight:800,fontSize:15,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
                 {o.client}
-                {o.numeroPedido&&<span style={{fontSize:11,background:'#f3f4f6',color:C.text2,fontWeight:700,padding:'2px 7px',borderRadius:10,flexShrink:0}}>#{o.numeroPedido}</span>}
                 {o.source==='whatsapp'&&<span style={{fontSize:10,background:'#dcfce7',color:'#15803d',fontWeight:700,padding:'2px 7px',borderRadius:10,flexShrink:0}}>📱 WA</span>}
               </div>
               <div style={{fontSize:12,color:C.text2,marginTop:2}}>{o.items.reduce((s,i)=>s+i.qty,0)} pizza(s) · Entrega: {fmtDate(o.deliveryDate)}</div>
