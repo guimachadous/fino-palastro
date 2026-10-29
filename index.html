@@ -307,27 +307,41 @@ const CATS_P_DEFAULT = ['Insumos/Ingredientes','Embalagens','Aluguel','Serviço'
 // contas a pagar e listas de categorias) ao abrir o app.
 const CAT_INSUMOS = 'Insumos/Ingredientes';
 const CATS_MESCLAR = { 'Ingredientes': CAT_INSUMOS, 'Fornecedor': CAT_INSUMOS, 'Embalagem': 'Embalagens' };
-// Grupos do plano de contas usados no DRE (classificação de cada categoria de saída)
+// Grupos do plano de contas usados no DRE (classificação de cada categoria de saída).
+// Estrutura no modelo de DRE por mês: Receita Bruta → Deduções → Receita Líquida →
+// Custos Diretos → Margem de Contribuição → Custos e Despesas Fixas (por subgrupo) →
+// EBITDA → Despesas Financeiras → Lucro Líquido → Investimentos → Lucro após
+// Investimentos → Empréstimos/Parcelamentos → Dividendos → Resultado.
 const DRE_GRUPOS = [
-  {id:'deducao',      lbl:'Dedução da receita',          cor:'#dc2626', desc:'Impostos sobre vendas (DAS), taxas de cartão/apps, descontos concedidos'},
-  {id:'cmv',          lbl:'CMV — insumos e embalagens',  cor:'#ea580c', desc:'Matéria-prima e embalagens. Ajustado pelo estoque inicial e final'},
-  {id:'variavel',     lbl:'Custo variável',              cor:'#f59e0b', desc:'Varia com as vendas: freelas de eventos, garçom, frete pago'},
-  {id:'fixo',         lbl:'Despesa fixa',                cor:'#3b82f6', desc:'Aluguel, energia, água, marketing, manutenção, softwares, salários'},
-  {id:'socios',       lbl:'Pró-labore / sócios',         cor:'#8b5cf6', desc:'Remuneração dos sócios pelo trabalho (pró-labore)'},
-  {id:'financeiro',   lbl:'Resultado financeiro',        cor:'#64748b', desc:'Juros, multas, tarifas bancárias'},
-  {id:'investimento', lbl:'Investimento (imobilizado)',  cor:'#0d9488', desc:'Fora do DRE: equipamentos e móveis. Entram no DRE como depreciação mensal'},
-  {id:'retirada',     lbl:'Distribuição de lucros',      cor:'#a16207', desc:'Fora do DRE: retirada de lucro pelos sócios'},
-  {id:'nao',          lbl:'Não classificado',            cor:'#9ca3af', desc:'Fica fora do DRE até ser classificado'},
+  {id:'deducao',      lbl:'Deduções das receitas',        cor:'#dc2626', desc:'Impostos sobre vendas (DAS), taxas de cartão/apps, descontos'},
+  {id:'variavel',     lbl:'Custos diretos',               cor:'#ea580c', desc:'Insumos, embalagens, freelas e garçons de eventos, frete'},
+  {id:'pessoal',      lbl:'Fixo · Pessoal',               cor:'#1d4ed8', desc:'Salários, encargos, pró-labore, alimentação de funcionários', fixo:true},
+  {id:'utilidades',   lbl:'Fixo · Utilidades',            cor:'#2563eb', desc:'Água, energia, gás, internet', fixo:true},
+  {id:'imoveis',      lbl:'Fixo · Imóveis',               cor:'#3b82f6', desc:'Aluguel, IPTU/alvará, manutenção predial, limpeza', fixo:true},
+  {id:'veiculos',     lbl:'Fixo · Veículos',              cor:'#0ea5e9', desc:'Combustível, manutenção, seguro, IPVA', fixo:true},
+  {id:'terceiros',    lbl:'Fixo · Serviços de terceiros', cor:'#0284c7', desc:'Contabilidade, softwares, consultorias', fixo:true},
+  {id:'gerais',       lbl:'Fixo · Gastos gerais',         cor:'#0369a1', desc:'Marketing, manutenção de equipamentos, uniformes, utensílios, outros', fixo:true},
+  {id:'financeiro',   lbl:'Despesas financeiras',         cor:'#64748b', desc:'Juros, multas, tarifas bancárias'},
+  {id:'investimento', lbl:'Investimentos',                cor:'#0d9488', desc:'Equipamentos, móveis, reformas (Ativo Imobilizado)'},
+  {id:'emprestimo',   lbl:'Empréstimos / parcelamentos',  cor:'#7c3aed', desc:'Parcelas de empréstimos e de impostos parcelados'},
+  {id:'retirada',     lbl:'Dividendos',                   cor:'#a16207', desc:'Distribuição de lucros aos sócios'},
+  {id:'nao',          lbl:'Não classificado',             cor:'#9ca3af', desc:'Fica fora do DRE até ser classificado'},
 ];
 const DRE_GRUPO_IDS = DRE_GRUPOS.map(g=>g.id);
-// Reclassificação inicial (v2): só altera se a categoria ainda estiver com o tipo antigo
+const DRE_FIXOS = DRE_GRUPOS.filter(g=>g.fixo);
+// Reclassificação v2 (só se a categoria ainda estiver com o tipo antigo)
 const DRE_RECLASS_V2 = {
   'Impostos':['variavel','deducao'], 'Ativo Imobilizado':['variavel','investimento'],
-  [CAT_INSUMOS]:['variavel','cmv'], 'Embalagens':['variavel','cmv'],
-  'Samantha':['fixo','socios'], 'Guilherme':['fixo','socios'], 'Pró Labore':['fixo','socios'],
   'Marketing':['variavel','fixo'], 'Manutenção':['variavel','fixo'], 'Uniformes':['variavel','fixo'],
   'Utensílios de produção':['variavel','fixo'],
 };
+// v3: grupos antigos → novos (fixo vira subgrupo pelo nome da categoria)
+const DRE_FIXO_SUB = {
+  'Aluguel':'imoveis', 'Energia':'utilidades', 'Água':'utilidades', 'Gás':'utilidades', 'Internet':'utilidades',
+  'Softwares':'terceiros', 'Contabilidade':'terceiros', 'Contador':'terceiros',
+  'Alimentação funcionários':'pessoal', 'Samantha':'pessoal', 'Guilherme':'pessoal', 'Pró Labore':'pessoal', 'Salários':'pessoal',
+};
+const dreGrupoLegado = (cat, g) => g==='cmv' ? 'variavel' : g==='socios' ? 'pessoal' : g==='fixo' ? (DRE_FIXO_SUB[cat]||'gerais') : g;
 const addMeses = (mes, n) => { let [y,m]=mes.split('-').map(Number); m+=n; y+=Math.floor((m-1)/12); m=((m-1)%12+12)%12+1; return `${y}-${String(m).padStart(2,'0')}`; };
 const mesesEntre = (a, b) => { const r=[]; let mk=a.slice(0,7); const fim=b.slice(0,7); while(mk<=fim && r.length<600){ r.push(mk); mk=addMeses(mk,1); } return r; };
 const CATS_R_DEFAULT = ['Pedido','Evento','Venda Congelada','Serviço','Outros'];
@@ -519,6 +533,10 @@ function App({ currentUserEmail, onLogout }) {
       if(!n.__v2){
         Object.entries(DRE_RECLASS_V2).forEach(([cat,[de,para]])=>{ if((n[cat]||'nao')===de) n[cat]=para; });
         n.__v2=true;
+      }
+      if(!n.__v3){
+        Object.keys(n).forEach(cat=>{ if(!cat.startsWith('__')) n[cat]=dreGrupoLegado(cat, n[cat]); });
+        n.__v3=true;
       }
       return JSON.stringify(n)===JSON.stringify(p)?p:n;
     });
@@ -3784,160 +3802,140 @@ function ConsultasView({ ctx }) {
 }
 
 // ── CONTÁBIL VIEW ──────────────────────────────────────────────────────────
-// DRE gerencial em regime de competência (quando informada):
-// Receita Bruta → Deduções → Receita Líquida → CMV (compras ± estoque) →
-// Custos variáveis → Margem de Contribuição → Despesas fixas → Pró-labore →
-// EBITDA → Depreciação → Resultado financeiro → Lucro Líquido.
+// DRE mensal (meses em colunas), no modelo:
+// Receita Bruta → Deduções → Receita Líquida → Custos Diretos → Margem de
+// Contribuição → Custos e Despesas Fixas (Pessoal, Utilidades, Imóveis, Veículos,
+// Serviços de Terceiros, Gastos Gerais) → EBITDA → Despesas Financeiras → Lucro
+// Líquido → Investimentos → Lucro após Investimentos → Empréstimos/Parcelamentos
+// → Dividendos → Resultado.
+// Saídas entram no mês de competência (se informada) ou no mês do pagamento.
 function ContabilView({ ctx }) {
-  const R = v => 'R$ ' + (v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
-  const pct = (v, total) => total ? ((v/total)*100).toFixed(1)+'%' : '—';
-  const toNum = v => { const n=parseFloat(String(v==null?'':v).replace(',','.')); return isNaN(n)?null:n; };
-
-  // ── Período: mês atual por padrão ──────────────────────────────────────
+  const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   const now = new Date();
-  const mesAtualKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-  const [de,  setDe]  = useState(mesAtualKey+'-01');
-  const [ate, setAte] = useState(mesAtualKey+'-'+String(new Date(now.getFullYear(),now.getMonth()+1,0).getDate()).padStart(2,'0'));
+  const anoAtual = now.getFullYear();
+  const [ano, setAno] = useState(anoAtual);
   const [aba, setAba] = useState('dre'); // 'dre' | 'classificar'
-  const [verDep, setVerDep] = useState(false);
+  const [abertos, setAbertos] = useState({}); // grupos expandidos
+  const scrollRef = React.useRef(null);
 
-  const cfg = ctx.dreCfg || {};
-  const setCfg = fn => ctx.setDreCfg(p => fn(p||{}));
-  const estoques = cfg.estoques || {};
-
-  const inRange = d => {
-    const s = (d||'').slice(0,10);
-    if (de  && s < de)  return false;
-    if (ate && s > ate) return false;
-    return true;
+  const nFmt = v => {
+    const a = Math.abs(v||0);
+    if (a < 0.005) return '-';
+    const s = a.toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:0});
+    return v < 0 ? `(${s})` : s;
   };
+  const R = v => 'R$ ' + (v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const pctFmt = (v, base) => base ? ((v/base)*100).toFixed(1).replace('.',',')+'%' : '-';
 
   // Competência: da conta a pagar de origem (se houver) ou do próprio lançamento
   const contaById = {};
   (ctx.contas||[]).forEach(c => { contaById[c.id] = c; });
   const compOf = t => ((t.ref && contaById[t.ref] && contaById[t.ref].competencia) || t.competencia || '');
-  const noPeriodo = t => {
-    const c = compOf(t);
-    if (c) return (!ate || c+'-01' <= ate) && (!de || c+'-31' >= de);
-    return inRange(t.date);
-  };
-
-  // Meses cobertos pelo período (para estoque e depreciação)
-  const datas = (ctx.trans||[]).map(t=>t.date).filter(Boolean).sort();
-  const meses = mesesEntre(de || datas[0] || today(), ate || today());
-  const mesUnico = meses.length===1 ? meses[0] : null;
+  const mesDe = t => (t.type==='saida' ? (compOf(t) || t.date || '') : (t.date || '')).slice(0,7);
 
   const catTipo = ctx.catTipo || {};
-  const grupoDe = cat => { const g = catTipo[cat]; return DRE_GRUPO_IDS.includes(g) ? g : 'nao'; };
+  const grupoDe = cat => { const g = dreGrupoLegado(cat, catTipo[cat]); return DRE_GRUPO_IDS.includes(g) ? g : 'nao'; };
   const grupoInfo = id => DRE_GRUPOS.find(g=>g.id===id) || DRE_GRUPOS[DRE_GRUPOS.length-1];
 
-  // ── Receita = entradas do período ──────────────────────────────────────
-  const transIn  = (ctx.trans||[]).filter(t => t.type==='entrada' && inRange(t.date));
-  const transOut = (ctx.trans||[]).filter(t => t.type==='saida'   && noPeriodo(t));
-  const receita  = transIn.reduce((s,t) => s+t.amount, 0);
-  const recCats = {};
-  transIn.forEach(t => { const c=t.category||'Sem categoria'; recCats[c]=(recCats[c]||0)+t.amount; });
+  // Anos disponíveis
+  const anos = [...new Set((ctx.trans||[]).map(t=>parseInt(mesDe(t).slice(0,4))).filter(Boolean).concat([anoAtual]))].sort((a,b)=>b-a);
+  const nMeses = ano===anoAtual ? now.getMonth()+1 : 12;
+  const meses = Array.from({length:nMeses},(_,i)=>`${ano}-${String(i+1).padStart(2,'0')}`);
+  const idx = {}; meses.forEach((m,i)=>{ idx[m]=i; });
+  const zeros = () => meses.map(()=>0);
 
-  // ── Saídas agrupadas por grupo do DRE ─────────────────────────────────
-  const G = {}; DRE_GRUPO_IDS.forEach(id => { G[id] = []; });
-  const aggOut = {};
-  transOut.forEach(t => { const c=t.category||'Sem categoria'; aggOut[c]=(aggOut[c]||0)+t.amount; });
-  Object.entries(aggOut).forEach(([cat,val]) => G[grupoDe(cat)].push({cat,val}));
-  DRE_GRUPO_IDS.forEach(id => G[id].sort((a,b)=>b.val-a.val));
-  const soma = arr => arr.reduce((s,x)=>s+x.val,0);
-
-  // ── Deduções (+ provisão de impostos, se não houver imposto lançado) ──
-  const aliquota = toNum(cfg.aliquotaImposto) || 0;
-  const temImposto = G.deducao.some(x => /impost|das\b|simples/i.test(x.cat) && x.val>0);
-  const deducoes = [...G.deducao];
-  if (!temImposto && aliquota>0 && receita>0)
-    deducoes.push({cat:`Provisão de impostos (${aliquota.toLocaleString('pt-BR')}% estimado)`, val:receita*aliquota/100, provisao:true});
-  const totalDeducoes = soma(deducoes);
-  const receitaLiquida = receita - totalDeducoes;
-
-  // ── CMV = Estoque inicial + Compras − Estoque final ───────────────────
-  const compras = soma(G.cmv);
-  const primeiro = meses[0], ultimo = meses[meses.length-1];
-  const eiInformado = estoques[primeiro] && estoques[primeiro].inicial!=null ? estoques[primeiro].inicial : null;
-  const eiAnterior  = estoques[addMeses(primeiro,-1)] && estoques[addMeses(primeiro,-1)].final!=null ? estoques[addMeses(primeiro,-1)].final : null;
-  const estoqueInicial = eiInformado!=null ? eiInformado : (eiAnterior!=null ? eiAnterior : 0);
-  const estoqueFinal = estoques[ultimo] && estoques[ultimo].final!=null ? estoques[ultimo].final : null;
-  const ajustaEstoque = estoqueFinal!=null;
-  const cmv = compras + (ajustaEstoque ? estoqueInicial - estoqueFinal : 0);
-
-  const totalVariavel = soma(G.variavel);
-  const margem        = receitaLiquida - cmv - totalVariavel;
-  const totalFixo     = soma(G.fixo);
-  const totalSocios   = soma(G.socios);
-  const ebitda        = margem - totalFixo - totalSocios;
-
-  // ── Depreciação linear do imobilizado ─────────────────────────────────
-  const vidaAnos  = toNum(cfg.vidaUtilAnos) || 10;
-  const vidaMeses = Math.max(1, Math.round(vidaAnos*12));
-  const depItens = (ctx.trans||[])
-    .filter(t => t.type==='saida' && grupoDe(t.category)==='investimento')
-    .map(t => {
-      const ini = (compOf(t) || t.date || '').slice(0,7);
-      const fim = addMeses(ini, vidaMeses); // exclusivo
-      const mensal = t.amount / vidaMeses;
-      const n = meses.filter(mk => mk>=ini && mk<fim).length;
-      return { t, ini, mensal, valor: mensal*n };
-    })
-    .filter(x => x.valor>0)
-    .sort((a,b)=>b.valor-a.valor);
-  const depreciacao = depItens.reduce((s,x)=>s+x.valor,0);
-
-  const totalFinanceiro = soma(G.financeiro);
-  const lucroLiquido = ebitda - depreciacao - totalFinanceiro;
-
-  const salvarEstoque = (mes, campo, v) => setCfg(p => {
-    const est = {...(p.estoques||{})};
-    const atual = {...(est[mes]||{})};
-    const n = toNum(v);
-    if (n==null) delete atual[campo]; else atual[campo] = n;
-    est[mes] = atual;
-    return {...p, estoques: est};
+  // ── Agrega por categoria e mês ────────────────────────────────────────
+  const rec = {};               // receita: cat → [meses]
+  const out = {};               // grupo → cat → [meses]
+  DRE_GRUPO_IDS.forEach(g => { out[g] = {}; });
+  (ctx.trans||[]).forEach(t => {
+    const mk = mesDe(t); const i = idx[mk];
+    if (i===undefined) return;
+    const cat = t.category || 'Sem categoria';
+    if (t.type==='entrada') { (rec[cat] = rec[cat] || zeros())[i] += t.amount||0; }
+    else if (t.type==='saida') { const g = grupoDe(cat); (out[g][cat] = out[g][cat] || zeros())[i] -= t.amount||0; }
   });
+  const somaVet = arrs => meses.map((_,i)=>arrs.reduce((s,a)=>s+a[i],0));
+  const linhasDe = obj => Object.entries(obj).map(([cat,v])=>({cat,v})).sort((a,b)=>a.v.reduce((s,x)=>s+x,0)-b.v.reduce((s,x)=>s+x,0));
+  const grupo = id => { const linhas = linhasDe(out[id]); return { linhas, v: somaVet(linhas.map(l=>l.v)) }; };
 
-  // Todas as categorias de saída já usadas (com total histórico)
-  const totCat = {};
-  (ctx.trans||[]).filter(t=>t.type==='saida').forEach(t=>{ const c=t.category||'Sem categoria'; totCat[c]=(totCat[c]||0)+t.amount; });
-  const todasCatsSaida = Object.keys(totCat).sort((a,b)=>a.localeCompare(b,'pt'));
+  const recLinhas = Object.entries(rec).map(([cat,v])=>({cat,v})).sort((a,b)=>b.v.reduce((s,x)=>s+x,0)-a.v.reduce((s,x)=>s+x,0));
+  const receitaBruta = somaVet(recLinhas.map(l=>l.v));
+  const ded   = grupo('deducao');
+  const recLiq = somaVet([receitaBruta, ded.v]);
+  const dir   = grupo('variavel');
+  const margem = somaVet([recLiq, dir.v]);
+  const fixos = DRE_FIXOS.map(g => ({...g, ...grupo(g.id)}));
+  const totalFixos = somaVet(fixos.map(f=>f.v));
+  const ebitda = somaVet([margem, totalFixos]);
+  const fin   = grupo('financeiro');
+  const lucroLiq = somaVet([ebitda, fin.v]);
+  const inv   = grupo('investimento');
+  const lucroAposInv = somaVet([lucroLiq, inv.v]);
+  const emp   = grupo('emprestimo');
+  const div   = grupo('retirada');
+  const resultado = somaVet([lucroAposInv, emp.v, div.v]);
+  const naoCl = grupo('nao');
+  const total = v => v.reduce((s,x)=>s+x,0);
+  const rbTotal = total(receitaBruta);
 
-  // ── Componentes de linha ──────────────────────────────────────────────
-  const DRELine = ({label, value, bold, indent, color, subline, pctVal, pctRef, bg, sinal}) => (
-    <div style={{display:'flex',alignItems:'center',padding:indent?'5px 12px 5px 28px':'7px 12px',
-      background:bg||'transparent',borderRadius:bg?8:0,marginBottom:bg?6:0}}>
-      <span style={{flex:1,fontSize:indent?13:14,fontWeight:bold?700:400,color:color||C.text2,fontStyle:subline?'italic':'normal'}}>
-        {label}
-      </span>
-      {pctVal!==undefined && pctRef ?
-        <span style={{fontSize:12,color:C.text2,marginRight:12,minWidth:50,textAlign:'right'}}>
-          {pct(pctVal, pctRef)}
-        </span> : null}
-      <span style={{fontSize:indent?13:bold?16:14,fontWeight:bold?700:500,color:color||C.text,minWidth:100,textAlign:'right'}}>
-        {sinal||''}{R(value)}
-      </span>
-    </div>
-  );
-  const Divider = ({dashed}) => <div style={{borderTop:`1px ${dashed?'dashed':'solid'} ${C.border}`,margin:'6px 0'}}/>;
-  const Secao = ({titulo, cor}) => (
-    <div style={{background:cor+'22',padding:'10px 12px 4px'}}>
-      <span style={{fontSize:11,fontWeight:700,color:cor,letterSpacing:1,textTransform:'uppercase'}}>{titulo}</span>
-    </div>
-  );
-  const Vazio = ({txt}) => <p style={{margin:'8px 12px 8px 28px',color:C.text2,fontSize:12,fontStyle:'italic'}}>{txt}</p>;
-  const Nota = ({children, cor}) => (
-    <div style={{margin:'4px 12px 8px',padding:'8px 10px',borderRadius:8,background:(cor||'#f59e0b')+'18',fontSize:11.5,color:C.text2,lineHeight:1.45}}>{children}</div>
-  );
-  const Resultado = ({label, value}) => (
-    <DRELine label={label} value={value} bold color={value>=0?'#22c55e':'#ef4444'}
-      pctVal={value} pctRef={receita} bg={value>=0?'#22c55e18':'#ef444418'}/>
-  );
-  const linhas = arr => arr.map(({cat,val,provisao})=>
-    <DRELine key={cat} label={cat} value={val} indent pctVal={val} pctRef={receita} subline={provisao}/>);
-  const inputEstoque = {width:110,padding:'5px 8px',borderRadius:8,border:'1px solid '+C.border,background:'white',color:C.text,fontSize:13,fontFamily:'inherit',textAlign:'right'};
-  const cor = id => grupoInfo(id).cor;
+  // Rola a tabela até o mês mais recente
+  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollLeft = scrollRef.current.scrollWidth; }, [ano, aba]);
+
+  const toggle = id => setAbertos(p => ({...p, [id]: !p[id]}));
+  const algumAberto = Object.values(abertos).some(Boolean);
+  const todosIds = ['receita','deducao','variavel','fixos',...DRE_FIXOS.map(f=>f.id),'financeiro','investimento','emprestimo','retirada','nao'];
+
+  // ── Estilos da tabela ─────────────────────────────────────────────────
+  const AZUL = '#1f3b5c', AZUL_CLARO = '#dfe9f4';
+  const W_CONTA = 168;
+  const cel = {padding:'5px 8px',textAlign:'right',whiteSpace:'nowrap',borderBottom:'1px solid #eef1f5',fontVariantNumeric:'tabular-nums'};
+  const conta = {position:'sticky',left:0,zIndex:1,padding:'5px 8px',textAlign:'left',minWidth:W_CONTA,maxWidth:W_CONTA,
+    borderBottom:'1px solid #eef1f5',borderRight:'1px solid #dde3ea',whiteSpace:'normal',lineHeight:1.25};
+
+  // tipos: 'grupo' (faixa azul, expansível), 'sub' (subgrupo fixo), 'linha', 'resultado', 'pct'
+  const Linha = ({tipo, label, v, id, nivel, vazio}) => {
+    const t = total(v||[]);
+    const temFilhos = !!id && !vazio;
+    const estilo = {
+      grupo:     {bg:AZUL, cor:'white', peso:700},
+      sub:       {bg:'#eef3f9', cor:AZUL, peso:700},
+      linha:     {bg:'white', cor:C.text, peso:400},
+      resultado: {bg:AZUL_CLARO, cor:AZUL, peso:800},
+      pct:       {bg:'white', cor:C.text2, peso:500},
+    }[tipo];
+    const valCor = x => tipo==='resultado' && x<0 ? '#b91c1c' : estilo.cor;
+    return (
+      <tr onClick={temFilhos?()=>toggle(id):undefined} style={{cursor:temFilhos?'pointer':'default'}}>
+        <td title={label} style={{...conta, background:estilo.bg, color:estilo.cor, fontWeight:estilo.peso,
+          paddingLeft: 8 + (nivel||0)*12, fontStyle:tipo==='pct'?'italic':'normal', fontSize:tipo==='pct'?11:12}}>
+          {temFilhos && <span style={{display:'inline-block',width:11,fontSize:9}}>{abertos[id]?'▼':'▶'}</span>}
+          {label}
+        </td>
+        {tipo==='pct'
+          ? <>
+              {meses.map((m,i)=><td key={m} style={{...cel,background:estilo.bg,color:estilo.cor,fontStyle:'italic',fontSize:11}}>{pctFmt(v[i], receitaBruta[i])}</td>)}
+              <td style={{...cel,background:'#f6f8fb',color:estilo.cor,fontStyle:'italic',fontSize:11,fontWeight:700}}>{pctFmt(t, rbTotal)}</td>
+              <td style={{...cel,background:'#f6f8fb'}}/>
+            </>
+          : <>
+              {meses.map((m,i)=><td key={m} title={R(v[i])} style={{...cel,background:estilo.bg,color:valCor(v[i]),fontWeight:estilo.peso}}>{nFmt(v[i])}</td>)}
+              <td title={R(t)} style={{...cel,background:tipo==='linha'?'#f6f8fb':estilo.bg,color:valCor(t),fontWeight:Math.max(700,estilo.peso)}}>{nFmt(t)}</td>
+              <td style={{...cel,background:tipo==='linha'?'#f6f8fb':estilo.bg,color:estilo.cor,fontSize:11}}>{pctFmt(t, rbTotal)}</td>
+            </>}
+      </tr>
+    );
+  };
+  const Espaco = () => <tr><td colSpan={meses.length+3} style={{height:6,background:'white',position:'sticky',left:0}}/></tr>;
+  const filhos = (id, linhas, nivel) => abertos[id] && linhas.map(l => <Linha key={id+l.cat} tipo="linha" label={l.cat} v={l.v} nivel={nivel||1}/>);
+
+  // Totais do ano para os cartões
+  const cards = [
+    ['Receita bruta', total(receitaBruta)],
+    ['Margem de contrib.', total(margem)],
+    ['EBITDA', total(ebitda)],
+    ['Resultado', total(resultado)],
+  ];
 
   return (
     <div style={{paddingBottom:40}}>
@@ -3953,210 +3951,134 @@ function ContabilView({ ctx }) {
         </div>
       </div>
 
-      {/* ── Seletor de período ── */}
-      <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
-        <span style={{fontSize:13,color:C.text2}}>Período:</span>
-        <input type="date" value={de}  onChange={e=>setDe(e.target.value)}
-          style={{padding:'6px 10px',borderRadius:8,border:'1px solid '+C.border,background:'white',color:C.text,fontSize:13,fontFamily:'inherit'}}/>
-        <span style={{color:C.text2,fontSize:13}}>até</span>
-        <input type="date" value={ate} onChange={e=>setAte(e.target.value)}
-          style={{padding:'6px 10px',borderRadius:8,border:'1px solid '+C.border,background:'white',color:C.text,fontSize:13,fontFamily:'inherit'}}/>
-        {[0,-1,-2].map(offset=>{
-          const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()+offset);
-          const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-          const ult=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();
-          const mDe=key+'-01', mAte=key+'-'+String(ult).padStart(2,'0');
-          const MESES=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-          const ativo=de===mDe&&ate===mAte;
-          return <button key={offset} onClick={()=>{setDe(mDe);setAte(mAte);}}
-            style={{padding:'5px 10px',borderRadius:8,border:'1px solid '+C.border,background:ativo?C.red:'white',
-              color:ativo?'white':C.text2,fontFamily:'inherit',fontSize:12,fontWeight:600,cursor:'pointer'}}>
-            {MESES[d.getMonth()]+'/'+String(d.getFullYear()).slice(2)}
-          </button>;
-        })}
-      </div>
-
-      {/* ── DRE ── */}
       {aba==='dre' && (
-        <div style={{background:'white',borderRadius:14,border:'1px solid '+C.border,overflow:'hidden'}}>
-          {/* Receita bruta */}
-          <Secao titulo="Receita bruta" cor={C.green}/>
-          {transIn.length===0
-            ? <Vazio txt="Nenhuma entrada no período."/>
-            : Object.entries(recCats).sort((a,b)=>b[1]-a[1]).map(([c,v])=>
-                <DRELine key={c} label={c} value={v} indent pctVal={v} pctRef={receita}/>)}
-          <Divider/>
-          <DRELine label="(+) RECEITA BRUTA" value={receita} bold color={C.green}/>
-          <Divider dashed/>
-
-          {/* Deduções */}
-          <Secao titulo="Deduções da receita" cor={cor('deducao')}/>
-          {deducoes.length===0 ? <Vazio txt="Nenhuma dedução no período."/> : linhas(deducoes)}
-          {!temImposto && receita>0 && (
-            <Nota cor="#dc2626">
-              {aliquota>0
-                ? <>Nenhum imposto sobre vendas lançado com competência neste período. Usei uma <strong>provisão de {aliquota.toLocaleString('pt-BR')}%</strong>. Ela some quando o DAS do mês for lançado com a competência certa.</>
-                : <>Nenhum imposto sobre vendas lançado com competência neste período. Lance o DAS informando o <strong>mês de competência</strong>, ou defina uma alíquota estimada em "⚙️ Classificar" para provisionar.</>}
-            </Nota>
-          )}
-          <Divider/>
-          <DRELine label="(−) DEDUÇÕES" value={totalDeducoes} bold color={cor('deducao')} pctVal={totalDeducoes} pctRef={receita}/>
-          <Resultado label="(=) RECEITA LÍQUIDA" value={receitaLiquida}/>
-          <Divider dashed/>
-
-          {/* CMV */}
-          <Secao titulo="CMV — insumos e embalagens" cor={cor('cmv')}/>
-          {G.cmv.length===0 ? <Vazio txt="Nenhuma compra de insumos/embalagens no período."/> : linhas(G.cmv)}
-          <DRELine label="Compras do período" value={compras} indent subline/>
-          {mesUnico ? (
-            <>
-              <div style={{display:'flex',alignItems:'center',padding:'5px 12px 5px 28px',gap:8}}>
-                <span style={{flex:1,fontSize:13,color:C.text2}}>(+) Estoque inicial (R$)</span>
-                <input key={'ei-'+mesUnico+'-'+(eiInformado==null?'':eiInformado)} type="number" inputMode="decimal" step="0.01"
-                  defaultValue={eiInformado==null?'':eiInformado}
-                  placeholder={eiAnterior!=null ? eiAnterior.toFixed(2) : '0,00'}
-                  onBlur={e=>salvarEstoque(mesUnico,'inicial',e.target.value)} style={inputEstoque}/>
-              </div>
-              <div style={{display:'flex',alignItems:'center',padding:'5px 12px 5px 28px',gap:8}}>
-                <span style={{flex:1,fontSize:13,color:C.text2}}>(−) Estoque final (R$)</span>
-                <input key={'ef-'+mesUnico+'-'+(estoqueFinal==null?'':estoqueFinal)} type="number" inputMode="decimal" step="0.01"
-                  defaultValue={estoqueFinal==null?'':estoqueFinal} placeholder="contagem do fim do mês"
-                  onBlur={e=>salvarEstoque(mesUnico,'final',e.target.value)} style={inputEstoque}/>
-              </div>
-            </>
-          ) : ajustaEstoque && (
-            <>
-              <DRELine label={`(+) Estoque inicial (${primeiro})`} value={estoqueInicial} indent/>
-              <DRELine label={`(−) Estoque final (${ultimo})`} value={estoqueFinal} indent/>
-            </>
-          )}
-          {!ajustaEstoque && (
-            <Nota cor={cor('cmv')}>
-              {mesUnico
-                ? <>Informe o <strong>valor em R$ do estoque</strong> de insumos e embalagens no início e no fim do mês (contagem × custo). Sem o estoque final, o CMV é igual às compras do mês. Se o estoque inicial ficar em branco, uso o estoque final do mês anterior.</>
-                : <>Selecione um único mês para informar os estoques. Sem o estoque final do último mês, o CMV é igual às compras do período.</>}
-            </Nota>
-          )}
-          <Divider/>
-          <DRELine label="(−) CMV" value={cmv} bold color={cor('cmv')} pctVal={cmv} pctRef={receita}/>
-          <Divider dashed/>
-
-          {/* Outros custos variáveis */}
-          <Secao titulo="Outros custos variáveis" cor={cor('variavel')}/>
-          {G.variavel.length===0 ? <Vazio txt="Nenhum custo variável no período."/> : linhas(G.variavel)}
-          <Divider/>
-          <DRELine label="(−) CUSTOS VARIÁVEIS" value={totalVariavel} bold color={cor('variavel')} pctVal={totalVariavel} pctRef={receita}/>
-          <Resultado label="(=) MARGEM DE CONTRIBUIÇÃO" value={margem}/>
-          <Divider dashed/>
-
-          {/* Despesas fixas */}
-          <Secao titulo="Despesas fixas" cor={cor('fixo')}/>
-          {G.fixo.length===0 ? <Vazio txt="Nenhuma despesa fixa no período."/> : linhas(G.fixo)}
-          <Divider/>
-          <DRELine label="(−) DESPESAS FIXAS" value={totalFixo} bold color={cor('fixo')} pctVal={totalFixo} pctRef={receita}/>
-          <Divider dashed/>
-
-          {/* Pró-labore */}
-          <Secao titulo="Pró-labore / sócios" cor={cor('socios')}/>
-          {G.socios.length===0 ? <Vazio txt="Nenhum pró-labore no período."/> : linhas(G.socios)}
-          <Divider/>
-          <DRELine label="(−) PRÓ-LABORE" value={totalSocios} bold color={cor('socios')} pctVal={totalSocios} pctRef={receita}/>
-          <Resultado label="(=) EBITDA" value={ebitda}/>
-          <Divider dashed/>
-
-          {/* Depreciação */}
-          <div onClick={()=>depItens.length&&setVerDep(v=>!v)} style={{cursor:depItens.length?'pointer':'default'}}>
-            <DRELine label={`(−) DEPRECIAÇÃO${depItens.length?(verDep?' ▾':' ▸'):''}`} value={depreciacao} bold color={cor('investimento')} pctVal={depreciacao} pctRef={receita}/>
+        <>
+          <div style={{display:'flex',gap:6,marginBottom:12,flexWrap:'wrap',alignItems:'center'}}>
+            {anos.map(a=>(
+              <button key={a} onClick={()=>setAno(a)}
+                style={{padding:'5px 12px',borderRadius:8,border:'1px solid '+C.border,background:ano===a?C.red:'white',
+                  color:ano===a?'white':C.text2,fontFamily:'inherit',fontSize:12,fontWeight:700,cursor:'pointer'}}>{a}</button>
+            ))}
+            <button onClick={()=>setAbertos(algumAberto?{}:Object.fromEntries(todosIds.map(id=>[id,true])))}
+              style={{marginLeft:'auto',padding:'5px 10px',borderRadius:8,border:'1px solid '+C.border,background:'white',
+                color:C.text2,fontFamily:'inherit',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+              {algumAberto?'Recolher tudo':'Expandir tudo'}
+            </button>
           </div>
-          {verDep && depItens.map(({t,ini,mensal,valor})=>(
-            <DRELine key={t.id} label={`${t.description||t.category} · ${ini} · ${R(mensal)}/mês`} value={valor} indent subline/>
-          ))}
-          {verDep && <Nota cor={cor('investimento')}>Depreciação linear em {vidaAnos.toLocaleString('pt-BR')} anos ({vidaMeses} meses), a partir do mês da compra. Para mudar a vida útil, vá em "⚙️ Classificar".</Nota>}
 
-          {/* Resultado financeiro */}
-          {G.financeiro.length>0 && (<>
-            <Secao titulo="Resultado financeiro" cor={cor('financeiro')}/>
-            {linhas(G.financeiro)}
-          </>)}
-          <DRELine label="(−) RESULTADO FINANCEIRO" value={totalFinanceiro} bold color={cor('financeiro')} pctVal={totalFinanceiro} pctRef={receita}/>
-          <Divider dashed/>
-
-          <Resultado label="(=) LUCRO LÍQUIDO" value={lucroLiquido}/>
-
-          {/* Fora do DRE */}
-          {(G.investimento.length>0 || G.retirada.length>0 || G.nao.length>0) && (
-            <>
-              <Divider dashed/>
-              <Secao titulo="Fora do DRE (apenas informativo)" cor="#6b7280"/>
-              {G.investimento.length>0 && <>
-                <DRELine label="Investimentos no período (viram depreciação)" value={soma(G.investimento)} color={cor('investimento')}/>
-                {G.investimento.map(({cat,val})=><DRELine key={'i'+cat} label={cat} value={val} indent color={C.text2}/>)}
-              </>}
-              {G.retirada.length>0 && <>
-                <DRELine label="Distribuição de lucros" value={soma(G.retirada)} color={cor('retirada')}/>
-                {G.retirada.map(({cat,val})=><DRELine key={'r'+cat} label={cat} value={val} indent color={C.text2}/>)}
-              </>}
-              {G.nao.length>0 && <>
-                <DRELine label="⚠️ Não classificados" value={soma(G.nao)} color={C.text2}/>
-                {G.nao.map(({cat,val})=><DRELine key={'n'+cat} label={cat} value={val} indent color={C.text2}/>)}
-                <Nota cor="#9ca3af">Classifique essas categorias em "⚙️ Classificar" para incluí-las no DRE.</Nota>
-              </>}
-            </>
-          )}
-        </div>
-      )}
-
-      {/* ── Classificar Categorias ── */}
-      {aba==='classificar' && (
-        <div>
-          <p style={{fontSize:13,color:C.text2,marginTop:0,marginBottom:10}}>
-            Escolha o grupo do DRE de cada categoria de saída. A classificação é salva automaticamente.
-          </p>
-          <div style={{background:'white',border:'1px solid '+C.border,borderRadius:12,padding:'10px 12px',marginBottom:14}}>
-            {DRE_GRUPOS.map(g=>(
-              <div key={g.id} style={{display:'flex',gap:8,alignItems:'baseline',padding:'3px 0'}}>
-                <span style={{width:9,height:9,borderRadius:'50%',background:g.cor,flexShrink:0,display:'inline-block'}}/>
-                <span style={{fontSize:12,color:C.text2,lineHeight:1.4}}><strong style={{color:C.text}}>{g.lbl}:</strong> {g.desc}</span>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:12}}>
+            {cards.map(([l,v])=>(
+              <div key={l} style={{background:'white',border:'1px solid '+C.border,borderRadius:12,padding:'9px 11px'}}>
+                <div style={{fontSize:10,fontWeight:700,color:C.text2,textTransform:'uppercase',letterSpacing:0.5}}>{l} {ano}</div>
+                <div style={{fontSize:15,fontWeight:800,color:v<0?'#b91c1c':C.text,marginTop:2}}>{R(v)}</div>
+                {l!=='Receita bruta' && <div style={{fontSize:11,color:C.text2}}>{pctFmt(v, rbTotal)} da receita</div>}
               </div>
             ))}
           </div>
-          {todasCatsSaida.length===0 && <p style={{color:C.text2,fontSize:13}}>Nenhuma categoria de saída encontrada.</p>}
-          <div style={{display:'flex',flexDirection:'column',gap:8}}>
-            {todasCatsSaida.map(cat=>{
-              const g = grupoInfo(grupoDe(cat));
-              return (
-                <div key={cat} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,
-                  padding:'10px 12px',borderRadius:10,border:'2px solid '+g.cor,background:g.cor+'12'}}>
-                  <div style={{minWidth:0,flex:1}}>
-                    <div style={{fontSize:14,fontWeight:600,color:C.text,overflowWrap:'anywhere'}}>{cat}</div>
-                    <div style={{fontSize:11,color:C.text2}}>{R(totCat[cat])} no histórico</div>
-                  </div>
-                  <select value={g.id} onChange={e=>{ const v=e.target.value; ctx.setCatTipo(prev=>({...prev,[cat]:v})); }}
-                    style={{padding:'6px 8px',borderRadius:8,border:'1px solid '+g.cor,background:'white',color:g.cor,
-                      fontSize:12,fontWeight:700,fontFamily:'inherit',maxWidth:150,flexShrink:0}}>
-                    {DRE_GRUPOS.map(o=><option key={o.id} value={o.id}>{o.lbl}</option>)}
-                  </select>
-                </div>
-              );
-            })}
-          </div>
 
-          {/* Parâmetros */}
-          <div style={{background:'white',border:'1px solid '+C.border,borderRadius:12,padding:'12px 14px',marginTop:18}}>
-            <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:10}}>Parâmetros do DRE</div>
-            <label className="label">Vida útil do imobilizado (anos)</label>
-            <input className="input" type="number" inputMode="decimal" min="1" step="1"
-              key={'vu-'+(cfg.vidaUtilAnos==null?'':cfg.vidaUtilAnos)} defaultValue={cfg.vidaUtilAnos==null?'':cfg.vidaUtilAnos} placeholder="10"
-              onBlur={e=>{ const n=toNum(e.target.value); setCfg(p=>({...p, vidaUtilAnos: n&&n>0?n:null})); }} style={{marginBottom:4}}/>
-            <div style={{fontSize:11,color:C.text2,marginBottom:12}}>Padrão de 10 anos para máquinas e equipamentos. A depreciação é linear a partir do mês da compra.</div>
-            <label className="label">Alíquota estimada de imposto sobre vendas (%)</label>
-            <input className="input" type="number" inputMode="decimal" min="0" step="0.01"
-              key={'al-'+(cfg.aliquotaImposto==null?'':cfg.aliquotaImposto)} defaultValue={cfg.aliquotaImposto==null?'':cfg.aliquotaImposto} placeholder="ex.: 6"
-              onBlur={e=>{ const n=toNum(e.target.value); setCfg(p=>({...p, aliquotaImposto: n&&n>0?n:null})); }} style={{marginBottom:4}}/>
-            <div style={{fontSize:11,color:C.text2}}>Opcional. Usada só para provisionar o imposto nos meses em que o DAS ainda não foi lançado com competência. Confirme a alíquota efetiva com o seu contador.</div>
+          <div ref={scrollRef} style={{overflowX:'auto',background:'white',borderRadius:12,border:'1px solid '+C.border}}>
+            <table style={{borderCollapse:'separate',borderSpacing:0,fontSize:12,minWidth:'100%'}}>
+              <thead>
+                <tr>
+                  <th style={{...conta,background:AZUL,color:'white',zIndex:2,fontSize:12}}>DRE {ano}</th>
+                  {meses.map((m,i)=><th key={m} style={{...cel,background:AZUL,color:'white',fontWeight:700,minWidth:70}}>{MESES[i]}</th>)}
+                  <th style={{...cel,background:AZUL,color:'white',fontWeight:700,minWidth:80}}>Ano</th>
+                  <th style={{...cel,background:AZUL,color:'white',fontWeight:700,minWidth:52}}>%</th>
+                </tr>
+              </thead>
+              <tbody>
+                <Linha tipo="grupo" label="Receita Bruta" v={receitaBruta} id="receita" vazio={!recLinhas.length}/>
+                {filhos('receita', recLinhas)}
+                <Linha tipo="grupo" label="(−) Deduções das Receitas" v={ded.v} id="deducao" vazio={!ded.linhas.length}/>
+                {filhos('deducao', ded.linhas)}
+                <Linha tipo="resultado" label="(=) Receita Líquida" v={recLiq}/>
+                <Espaco/>
+                <Linha tipo="grupo" label="(−) Custos Diretos" v={dir.v} id="variavel" vazio={!dir.linhas.length}/>
+                {filhos('variavel', dir.linhas)}
+                <Linha tipo="resultado" label="(=) Margem de Contribuição" v={margem}/>
+                <Linha tipo="pct" label="% da receita bruta" v={margem}/>
+                <Espaco/>
+                <Linha tipo="grupo" label="(−) Custos e Despesas Fixas" v={totalFixos} id="fixos" vazio={!fixos.some(f=>f.linhas.length)}/>
+                {abertos.fixos && fixos.filter(f=>f.linhas.length).map(f=>(
+                  <React.Fragment key={f.id}>
+                    <Linha tipo="sub" label={f.lbl.replace('Fixo · ','')} v={f.v} id={f.id} nivel={1}/>
+                    {filhos(f.id, f.linhas, 2)}
+                  </React.Fragment>
+                ))}
+                <Linha tipo="resultado" label="(=) EBITDA" v={ebitda}/>
+                <Linha tipo="pct" label="% da receita bruta" v={ebitda}/>
+                <Espaco/>
+                <Linha tipo="grupo" label="(−) Despesas Financeiras" v={fin.v} id="financeiro" vazio={!fin.linhas.length}/>
+                {filhos('financeiro', fin.linhas)}
+                <Linha tipo="resultado" label="(=) Lucro Líquido" v={lucroLiq}/>
+                <Linha tipo="pct" label="% da receita bruta" v={lucroLiq}/>
+                <Espaco/>
+                <Linha tipo="grupo" label="(−) Investimentos" v={inv.v} id="investimento" vazio={!inv.linhas.length}/>
+                {filhos('investimento', inv.linhas)}
+                <Linha tipo="resultado" label="(=) Lucro após Investimentos" v={lucroAposInv}/>
+                <Espaco/>
+                <Linha tipo="grupo" label="(−) Empréstimos / Parcelamentos" v={emp.v} id="emprestimo" vazio={!emp.linhas.length}/>
+                {filhos('emprestimo', emp.linhas)}
+                <Linha tipo="grupo" label="(−) Dividendos" v={div.v} id="retirada" vazio={!div.linhas.length}/>
+                {filhos('retirada', div.linhas)}
+                <Linha tipo="resultado" label="(=) Resultado" v={resultado}/>
+                <Linha tipo="pct" label="% da receita bruta" v={resultado}/>
+                {naoCl.linhas.length>0 && (<>
+                  <Espaco/>
+                  <Linha tipo="sub" label="⚠️ Não classificados (fora)" v={naoCl.v} id="nao"/>
+                  {filhos('nao', naoCl.linhas)}
+                </>)}
+              </tbody>
+            </table>
           </div>
-        </div>
+          <div style={{fontSize:11,color:C.text2,marginTop:8,lineHeight:1.5}}>
+            Valores em R$, custos entre parênteses. Toque numa linha azul para ver as contas. As saídas entram no mês de competência, quando informada, ou no mês do pagamento.
+            {naoCl.linhas.length>0 && <> Há categorias não classificadas fora do DRE: classifique em "⚙️ Classificar".</>}
+          </div>
+        </>
       )}
+
+      {/* ── Classificar Categorias ── */}
+      {aba==='classificar' && (() => {
+        const totCat = {};
+        (ctx.trans||[]).filter(t=>t.type==='saida').forEach(t=>{ const c=t.category||'Sem categoria'; totCat[c]=(totCat[c]||0)+t.amount; });
+        const cats = Object.keys(totCat).sort((a,b)=>a.localeCompare(b,'pt'));
+        return (
+          <div>
+            <p style={{fontSize:13,color:C.text2,marginTop:0,marginBottom:10}}>
+              Escolha em que linha do DRE cada categoria de saída entra. A classificação é salva automaticamente.
+            </p>
+            <div style={{background:'white',border:'1px solid '+C.border,borderRadius:12,padding:'10px 12px',marginBottom:14}}>
+              {DRE_GRUPOS.map(g=>(
+                <div key={g.id} style={{display:'flex',gap:8,alignItems:'baseline',padding:'3px 0'}}>
+                  <span style={{width:9,height:9,borderRadius:'50%',background:g.cor,flexShrink:0,display:'inline-block'}}/>
+                  <span style={{fontSize:12,color:C.text2,lineHeight:1.4}}><strong style={{color:C.text}}>{g.lbl}:</strong> {g.desc}</span>
+                </div>
+              ))}
+            </div>
+            {cats.length===0 && <p style={{color:C.text2,fontSize:13}}>Nenhuma categoria de saída encontrada.</p>}
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+              {cats.map(cat=>{
+                const g = grupoInfo(grupoDe(cat));
+                return (
+                  <div key={cat} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,
+                    padding:'10px 12px',borderRadius:10,border:'2px solid '+g.cor,background:g.cor+'12'}}>
+                    <div style={{minWidth:0,flex:1}}>
+                      <div style={{fontSize:14,fontWeight:600,color:C.text,overflowWrap:'anywhere'}}>{cat}</div>
+                      <div style={{fontSize:11,color:C.text2}}>{R(totCat[cat])} no histórico</div>
+                    </div>
+                    <select value={g.id} onChange={e=>{ const v=e.target.value; ctx.setCatTipo(prev=>({...prev,[cat]:v})); }}
+                      style={{padding:'6px 8px',borderRadius:8,border:'1px solid '+g.cor,background:'white',color:g.cor,
+                        fontSize:12,fontWeight:700,fontFamily:'inherit',maxWidth:160,flexShrink:0}}>
+                      {DRE_GRUPOS.map(o=><option key={o.id} value={o.id}>{o.lbl}</option>)}
+                    </select>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
