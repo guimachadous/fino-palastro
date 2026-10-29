@@ -300,7 +300,36 @@ const PRODUCTS_DEFAULT = [
 
 const CATS_IN_DEFAULT  = ['Venda Congelada','Evento ao Vivo','Evento Express','Outros'];
 const CATS_OUT_DEFAULT = ['Insumos/Ingredientes','Embalagens','Despesa Fixa','Despesa Variável','Marketing','Outros'];
-const CATS_P_DEFAULT = ['Fornecedor','Ingredientes','Embalagem','Aluguel','Serviço','Outros'];
+const CATS_P_DEFAULT = ['Insumos/Ingredientes','Embalagens','Aluguel','Serviço','Outros'];
+
+// ── DRE / Contábil ──────────────────────────────────────────────────────────
+// Categorias antigas que foram unificadas. Migradas automaticamente (lançamentos,
+// contas a pagar e listas de categorias) ao abrir o app.
+const CAT_INSUMOS = 'Insumos/Ingredientes';
+const CATS_MESCLAR = { 'Ingredientes': CAT_INSUMOS, 'Fornecedor': CAT_INSUMOS, 'Embalagem': 'Embalagens' };
+// Grupos do plano de contas usados no DRE (classificação de cada categoria de saída)
+const DRE_GRUPOS = [
+  {id:'deducao',      lbl:'Dedução da receita',          cor:'#dc2626', desc:'Impostos sobre vendas (DAS), taxas de cartão/apps, descontos concedidos'},
+  {id:'cmv',          lbl:'CMV — insumos e embalagens',  cor:'#ea580c', desc:'Matéria-prima e embalagens. Ajustado pelo estoque inicial e final'},
+  {id:'variavel',     lbl:'Custo variável',              cor:'#f59e0b', desc:'Varia com as vendas: freelas de eventos, garçom, frete pago'},
+  {id:'fixo',         lbl:'Despesa fixa',                cor:'#3b82f6', desc:'Aluguel, energia, água, marketing, manutenção, softwares, salários'},
+  {id:'socios',       lbl:'Pró-labore / sócios',         cor:'#8b5cf6', desc:'Remuneração dos sócios pelo trabalho (pró-labore)'},
+  {id:'financeiro',   lbl:'Resultado financeiro',        cor:'#64748b', desc:'Juros, multas, tarifas bancárias'},
+  {id:'investimento', lbl:'Investimento (imobilizado)',  cor:'#0d9488', desc:'Fora do DRE: equipamentos e móveis. Entram no DRE como depreciação mensal'},
+  {id:'retirada',     lbl:'Distribuição de lucros',      cor:'#a16207', desc:'Fora do DRE: retirada de lucro pelos sócios'},
+  {id:'nao',          lbl:'Não classificado',            cor:'#9ca3af', desc:'Fica fora do DRE até ser classificado'},
+];
+const DRE_GRUPO_IDS = DRE_GRUPOS.map(g=>g.id);
+// Reclassificação inicial (v2): só altera se a categoria ainda estiver com o tipo antigo
+const DRE_RECLASS_V2 = {
+  'Impostos':['variavel','deducao'], 'Ativo Imobilizado':['variavel','investimento'],
+  [CAT_INSUMOS]:['variavel','cmv'], 'Embalagens':['variavel','cmv'],
+  'Samantha':['fixo','socios'], 'Guilherme':['fixo','socios'], 'Pró Labore':['fixo','socios'],
+  'Marketing':['variavel','fixo'], 'Manutenção':['variavel','fixo'], 'Uniformes':['variavel','fixo'],
+  'Utensílios de produção':['variavel','fixo'],
+};
+const addMeses = (mes, n) => { let [y,m]=mes.split('-').map(Number); m+=n; y+=Math.floor((m-1)/12); m=((m-1)%12+12)%12+1; return `${y}-${String(m).padStart(2,'0')}`; };
+const mesesEntre = (a, b) => { const r=[]; let mk=a.slice(0,7); const fim=b.slice(0,7); while(mk<=fim && r.length<600){ r.push(mk); mk=addMeses(mk,1); } return r; };
 const CATS_R_DEFAULT = ['Pedido','Evento','Venda Congelada','Serviço','Outros'];
 const UNIDADES_DEFAULT = ['KG','LT','PCT','UN','CX','G','ML'];
 
@@ -401,7 +430,8 @@ function App({ currentUserEmail, onLogout }) {
   const [catsReceber,   setCatsReceber]   = useState(()=>db.get('fp_cats_receber', CATS_R_DEFAULT));
   const [catsIn,        setCatsIn]        = useState(()=>db.get('fp_cats_in', CATS_IN_DEFAULT));
   const [catsOut,       setCatsOut]       = useState(()=>db.get('fp_cats_out', CATS_OUT_DEFAULT));
-  const [catTipo,       setCatTipo]       = useState(()=>db.get('fp_cat_tipo', {})); // 'fixo'|'variavel'|''
+  const [catTipo,       setCatTipo]       = useState(()=>db.get('fp_cat_tipo', {})); // grupo do DRE (ver DRE_GRUPOS)
+  const [dreCfg,        setDreCfg]        = useState(()=>db.get('fp_dre_cfg', {})); // {vidaUtilAnos, aliquotaImposto, estoques:{'AAAA-MM':{inicial,final}}}
   const [alertKey, setAlertKey] = useState('');
   const [newCardapioCount, setNewCardapioCount] = useState(0);
   const [notifPerm, setNotifPerm] = useState(()=> 'Notification' in window ? Notification.permission : 'unsupported');
@@ -466,6 +496,33 @@ function App({ currentUserEmail, onLogout }) {
   useEffect(()=>{ if(initDone.current) db.set('fp_cats_in',      catsIn);       }, [catsIn]);
   useEffect(()=>{ if(initDone.current) db.set('fp_cats_out',     catsOut);      }, [catsOut]);
   useEffect(()=>{ if(initDone.current) db.set('fp_cat_tipo',     catTipo);      }, [catTipo]);
+  useEffect(()=>{ if(initDone.current) db.set('fp_dre_cfg',      dreCfg);       }, [dreCfg]);
+
+  // ── MIGRAÇÃO DO PLANO DE CONTAS (DRE) ──────────────────────────────────────
+  // Roda após carregar os dados da nuvem. É idempotente: só grava se houver algo
+  // a mudar. Unifica 'Ingredientes' e 'Fornecedor' em 'Insumos/Ingredientes'
+  // (lançamentos, contas a pagar e listas de categorias) e reclassifica as
+  // categorias nos grupos novos do DRE.
+  const _dreMigrDone = React.useRef(false);
+  useEffect(()=>{
+    if(cloudStatus!=='ok'||_dreMigrDone.current) return;
+    _dreMigrDone.current=true;
+    const mesclar = c => CATS_MESCLAR[c] || c;
+    setTrans(p=>{ let mud=false; const n=p.map(t=>{ if(t.type==='saida'&&CATS_MESCLAR[t.category]){ mud=true; return {...t,category:CATS_MESCLAR[t.category]}; } return t; }); return mud?n:p; });
+    setContas(p=>{ let mud=false; const n=p.map(c=>{ if(c.tipo==='pagar'&&CATS_MESCLAR[c.categoria]){ mud=true; return {...c,categoria:CATS_MESCLAR[c.categoria]}; } return c; }); return mud?n:p; });
+    const limparLista = p => { const n=[...new Set((p||[]).map(mesclar))]; if(!n.includes(CAT_INSUMOS)) n.unshift(CAT_INSUMOS); return JSON.stringify(n)===JSON.stringify(p)?p:n; };
+    setCatsPagar(limparLista);
+    setCatsOut(limparLista);
+    setCatTipo(p=>{
+      const n={...p};
+      Object.keys(CATS_MESCLAR).forEach(k=>{ if(n[CATS_MESCLAR[k]]===undefined && n[k]) n[CATS_MESCLAR[k]]=n[k]; delete n[k]; });
+      if(!n.__v2){
+        Object.entries(DRE_RECLASS_V2).forEach(([cat,[de,para]])=>{ if((n[cat]||'nao')===de) n[cat]=para; });
+        n.__v2=true;
+      }
+      return JSON.stringify(n)===JSON.stringify(p)?p:n;
+    });
+  },[cloudStatus]);
 
   // ── AUTO-BACKUP DIÁRIO ─────────────────────────────────────────────────────
   // Uma vez por dia, após a sincronização com a nuvem, salva um snapshot
@@ -484,7 +541,7 @@ function App({ currentUserEmail, onLogout }) {
         fp_fornecedores:fornecedores, fp_clientes:clientes, fp_materias_primas:materiasPrimas,
         fp_estoque:estoqueData, fp_estoque_hist:estoqueHist, fp_sabores:sabores,
         fp_cats_receber:catsReceber, fp_cats_in:catsIn, fp_cats_out:catsOut,
-        fp_nfs_saida:nfsSaida,
+        fp_nfs_saida:nfsSaida, fp_cat_tipo:catTipo, fp_dre_cfg:dreCfg,
         fp_sheet_id:sheetId, fp_opening_bal:openBal,
         _exportedAt:new Date().toISOString(), _version:2,
       };
@@ -562,7 +619,8 @@ function App({ currentUserEmail, onLogout }) {
         amount: valorFinal,
         description: conta.descricao || '',
         paymentMethod: 'Pix',
-        ref: conta.id
+        ref: conta.id,
+        ...(conta.competencia ? {competencia: conta.competencia} : {})
       });
     }
     setContas(p => p.map(c => c.id===id?{...c,pago:true,pagoEm:dataPgto,desconto:desconto||0,juros:juros||0,
@@ -801,6 +859,8 @@ function App({ currentUserEmail, onLogout }) {
     const CS = {
       'fp_sheet_id': v => setSheetId(typeof v==='string'?v:''),
       'fp_opening_bal': v => setOpenBal(parseFloat(v)||0),
+      'fp_cat_tipo': v => { if (v && typeof v==='object' && !Array.isArray(v)) setCatTipo(v); },
+      'fp_dre_cfg':  v => { if (v && typeof v==='object' && !Array.isArray(v)) setDreCfg(v); },
       // Só sobrescreve o estoque local se a nuvem trouxer um objeto válido E
       // não for mais antigo do que o que este aparelho já tem salvo (ts).
       // Antes, qualquer leitura da nuvem era aplicada sem checar "de quando"
@@ -954,7 +1014,7 @@ function App({ currentUserEmail, onLogout }) {
     return () => clearInterval(id);
   }, [sheetId]);
 
-  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, unpaidOrder, paidEvent, contas, addConta, updConta, pagarConta, delConta, nfsSaida, addNfSaida, updNfSaida, delNfSaida, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus, newCardapioCount, catsPagar, setCatsPagar, catsReceber, setCatsReceber, catsIn, setCatsIn, catsOut, setCatsOut, unidadesMedida, setUnidadesMedida, fornecedores, addFornecedor, updFornecedor, delFornecedor, clientes, addCliente, updCliente, delCliente, materiasPrimas, addMateriaPrima, updMateriaPrima, delMateriaPrima, estoqueData, estoqueHist, ajustarEstoque, debitarEstoquePedido, reporEstoquePedido, delHistoricoEstoque, sabores, addSabor, updSabor, delSabor, currentUserEmail, onLogout, catTipo, setCatTipo, nfse, addNfse, updNfse, delNfse };
+  const ctx = { trans, orders, events, products, setProducts, addTrans, addOrder, addEvent, updOrder, updEvent, delTrans, paidOrder, unpaidOrder, paidEvent, contas, addConta, updConta, pagarConta, delConta, nfsSaida, addNfSaida, updNfSaida, delNfSaida, open, close, setTab, sheetId, setSheetId, syncing, syncFromSheets, lastSync, syncMsg, showCfg, setShowCfg, openBal, setOpenBal, showProds, setShowProds, cloudStatus, newCardapioCount, catsPagar, setCatsPagar, catsReceber, setCatsReceber, catsIn, setCatsIn, catsOut, setCatsOut, unidadesMedida, setUnidadesMedida, fornecedores, addFornecedor, updFornecedor, delFornecedor, clientes, addCliente, updCliente, delCliente, materiasPrimas, addMateriaPrima, updMateriaPrima, delMateriaPrima, estoqueData, estoqueHist, ajustarEstoque, debitarEstoquePedido, reporEstoquePedido, delHistoricoEstoque, sabores, addSabor, updSabor, delSabor, currentUserEmail, onLogout, catTipo, setCatTipo, dreCfg, setDreCfg, nfse, addNfse, updNfse, delNfse };
 
   const TABS = [
     {id:'dashboard',   lbl:'Início',   icon:I.home},
@@ -2291,6 +2351,7 @@ function TransModal({ ctx, initType='entrada' }) {
   const [desc,setDesc]=useState('');
   const [pay, setPay] =useState('Pix');
   const [date,setDate]=useState(today());
+  const [competencia,setCompetencia]=useState(''); // 'AAAA-MM' (só saídas) — mês de referência no DRE
   const [items,setItems]=useState([{productId:'',productName:'',cat:'grande',qty:1}]);
   const [novaCat,   setNovaCat]   = useState('');
   const [addingCat, setAddingCat] = useState(false);
@@ -2325,7 +2386,8 @@ function TransModal({ ctx, initType='entrada' }) {
   const save=()=>{
     if(!amt||!cat)return;
     const itensVendidos = precisaPizzas ? items.filter(i=>i.productId) : [];
-    ctx.addTrans({type,amount:parseFloat(amt),category:cat,description:desc,paymentMethod:pay,date,itens:itensVendidos});
+    ctx.addTrans({type,amount:parseFloat(amt),category:cat,description:desc,paymentMethod:pay,date,itens:itensVendidos,
+      ...(type==='saida'&&competencia ? {competencia} : {})});
     if (itensVendidos.length) ctx.debitarEstoquePedido(itensVendidos);
     ctx.close();
   };
@@ -2417,7 +2479,15 @@ function TransModal({ ctx, initType='entrada' }) {
         </div>
 
         <label className="label">Data</label>
-        <input className="input" type="date" value={date} onChange={e=>setDate(e.target.value)} style={{marginBottom:22}}/>
+        <input className="input" type="date" value={date} onChange={e=>setDate(e.target.value)} style={{marginBottom:type==='saida'?14:22}}/>
+
+        {type==='saida' && (
+          <div style={{marginBottom:22}}>
+            <label className="label">Competência (opcional)</label>
+            <input className="input" type="month" value={competencia} onChange={e=>setCompetencia(e.target.value)} style={{marginBottom:4}}/>
+            <div style={{fontSize:11,color:C.text2,lineHeight:1.4}}>Mês a que a despesa se refere no DRE (ex.: DAS de outubro pago em novembro). Em branco, usa a data.</div>
+          </div>
+        )}
 
         <button className="btn-primary" onClick={save} disabled={!amt||!cat} style={{background:!amt||!cat?'#ccc':type==='entrada'?C.green:C.red}}>
           Salvar Lançamento
@@ -3714,10 +3784,14 @@ function ConsultasView({ ctx }) {
 }
 
 // ── CONTÁBIL VIEW ──────────────────────────────────────────────────────────
+// DRE gerencial em regime de competência (quando informada):
+// Receita Bruta → Deduções → Receita Líquida → CMV (compras ± estoque) →
+// Custos variáveis → Margem de Contribuição → Despesas fixas → Pró-labore →
+// EBITDA → Depreciação → Resultado financeiro → Lucro Líquido.
 function ContabilView({ ctx }) {
-  // usa o C global (red=accent, text=primary, text2=secondary, border, green, cream)
   const R = v => 'R$ ' + (v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
   const pct = (v, total) => total ? ((v/total)*100).toFixed(1)+'%' : '—';
+  const toNum = v => { const n=parseFloat(String(v==null?'':v).replace(',','.')); return isNaN(n)?null:n; };
 
   // ── Período: mês atual por padrão ──────────────────────────────────────
   const now = new Date();
@@ -3725,6 +3799,11 @@ function ContabilView({ ctx }) {
   const [de,  setDe]  = useState(mesAtualKey+'-01');
   const [ate, setAte] = useState(mesAtualKey+'-'+String(new Date(now.getFullYear(),now.getMonth()+1,0).getDate()).padStart(2,'0'));
   const [aba, setAba] = useState('dre'); // 'dre' | 'classificar'
+  const [verDep, setVerDep] = useState(false);
+
+  const cfg = ctx.dreCfg || {};
+  const setCfg = fn => ctx.setDreCfg(p => fn(p||{}));
+  const estoques = cfg.estoques || {};
 
   const inRange = d => {
     const s = (d||'').slice(0,10);
@@ -3733,61 +3812,132 @@ function ContabilView({ ctx }) {
     return true;
   };
 
+  // Competência: da conta a pagar de origem (se houver) ou do próprio lançamento
+  const contaById = {};
+  (ctx.contas||[]).forEach(c => { contaById[c.id] = c; });
+  const compOf = t => ((t.ref && contaById[t.ref] && contaById[t.ref].competencia) || t.competencia || '');
+  const noPeriodo = t => {
+    const c = compOf(t);
+    if (c) return (!ate || c+'-01' <= ate) && (!de || c+'-31' >= de);
+    return inRange(t.date);
+  };
+
+  // Meses cobertos pelo período (para estoque e depreciação)
+  const datas = (ctx.trans||[]).map(t=>t.date).filter(Boolean).sort();
+  const meses = mesesEntre(de || datas[0] || today(), ate || today());
+  const mesUnico = meses.length===1 ? meses[0] : null;
+
+  const catTipo = ctx.catTipo || {};
+  const grupoDe = cat => { const g = catTipo[cat]; return DRE_GRUPO_IDS.includes(g) ? g : 'nao'; };
+  const grupoInfo = id => DRE_GRUPOS.find(g=>g.id===id) || DRE_GRUPOS[DRE_GRUPOS.length-1];
+
   // ── Receita = entradas do período ──────────────────────────────────────
   const transIn  = (ctx.trans||[]).filter(t => t.type==='entrada' && inRange(t.date));
-  const transOut = (ctx.trans||[]).filter(t => t.type==='saida'   && inRange(t.date));
+  const transOut = (ctx.trans||[]).filter(t => t.type==='saida'   && noPeriodo(t));
   const receita  = transIn.reduce((s,t) => s+t.amount, 0);
-
-  // ── Agrupa entradas por categoria ─────────────────────────────────────
   const recCats = {};
   transIn.forEach(t => { const c=t.category||'Sem categoria'; recCats[c]=(recCats[c]||0)+t.amount; });
 
-  // ── Custos por tipo ───────────────────────────────────────────────────
-  const catTipo = ctx.catTipo || {};
-  const grupoOut = { variavel:[], fixo:[], nao:[] };
+  // ── Saídas agrupadas por grupo do DRE ─────────────────────────────────
+  const G = {}; DRE_GRUPO_IDS.forEach(id => { G[id] = []; });
   const aggOut = {};
-  transOut.forEach(t => {
-    const c = t.category||'Sem categoria';
-    aggOut[c] = (aggOut[c]||0) + t.amount;
+  transOut.forEach(t => { const c=t.category||'Sem categoria'; aggOut[c]=(aggOut[c]||0)+t.amount; });
+  Object.entries(aggOut).forEach(([cat,val]) => G[grupoDe(cat)].push({cat,val}));
+  DRE_GRUPO_IDS.forEach(id => G[id].sort((a,b)=>b.val-a.val));
+  const soma = arr => arr.reduce((s,x)=>s+x.val,0);
+
+  // ── Deduções (+ provisão de impostos, se não houver imposto lançado) ──
+  const aliquota = toNum(cfg.aliquotaImposto) || 0;
+  const temImposto = G.deducao.some(x => /impost|das\b|simples/i.test(x.cat) && x.val>0);
+  const deducoes = [...G.deducao];
+  if (!temImposto && aliquota>0 && receita>0)
+    deducoes.push({cat:`Provisão de impostos (${aliquota.toLocaleString('pt-BR')}% estimado)`, val:receita*aliquota/100, provisao:true});
+  const totalDeducoes = soma(deducoes);
+  const receitaLiquida = receita - totalDeducoes;
+
+  // ── CMV = Estoque inicial + Compras − Estoque final ───────────────────
+  const compras = soma(G.cmv);
+  const primeiro = meses[0], ultimo = meses[meses.length-1];
+  const eiInformado = estoques[primeiro] && estoques[primeiro].inicial!=null ? estoques[primeiro].inicial : null;
+  const eiAnterior  = estoques[addMeses(primeiro,-1)] && estoques[addMeses(primeiro,-1)].final!=null ? estoques[addMeses(primeiro,-1)].final : null;
+  const estoqueInicial = eiInformado!=null ? eiInformado : (eiAnterior!=null ? eiAnterior : 0);
+  const estoqueFinal = estoques[ultimo] && estoques[ultimo].final!=null ? estoques[ultimo].final : null;
+  const ajustaEstoque = estoqueFinal!=null;
+  const cmv = compras + (ajustaEstoque ? estoqueInicial - estoqueFinal : 0);
+
+  const totalVariavel = soma(G.variavel);
+  const margem        = receitaLiquida - cmv - totalVariavel;
+  const totalFixo     = soma(G.fixo);
+  const totalSocios   = soma(G.socios);
+  const ebitda        = margem - totalFixo - totalSocios;
+
+  // ── Depreciação linear do imobilizado ─────────────────────────────────
+  const vidaAnos  = toNum(cfg.vidaUtilAnos) || 10;
+  const vidaMeses = Math.max(1, Math.round(vidaAnos*12));
+  const depItens = (ctx.trans||[])
+    .filter(t => t.type==='saida' && grupoDe(t.category)==='investimento')
+    .map(t => {
+      const ini = (compOf(t) || t.date || '').slice(0,7);
+      const fim = addMeses(ini, vidaMeses); // exclusivo
+      const mensal = t.amount / vidaMeses;
+      const n = meses.filter(mk => mk>=ini && mk<fim).length;
+      return { t, ini, mensal, valor: mensal*n };
+    })
+    .filter(x => x.valor>0)
+    .sort((a,b)=>b.valor-a.valor);
+  const depreciacao = depItens.reduce((s,x)=>s+x.valor,0);
+
+  const totalFinanceiro = soma(G.financeiro);
+  const lucroLiquido = ebitda - depreciacao - totalFinanceiro;
+
+  const salvarEstoque = (mes, campo, v) => setCfg(p => {
+    const est = {...(p.estoques||{})};
+    const atual = {...(est[mes]||{})};
+    const n = toNum(v);
+    if (n==null) delete atual[campo]; else atual[campo] = n;
+    est[mes] = atual;
+    return {...p, estoques: est};
   });
-  Object.entries(aggOut).forEach(([cat, val]) => {
-    const tipo = catTipo[cat] || 'nao';
-    grupoOut[tipo === 'variavel' ? 'variavel' : tipo === 'fixo' ? 'fixo' : 'nao'].push({cat, val});
-  });
-  ['variavel','fixo','nao'].forEach(g => grupoOut[g].sort((a,b)=>b.val-a.val));
 
-  const totalVariavel = grupoOut.variavel.reduce((s,x)=>s+x.val,0);
-  const totalFixo     = grupoOut.fixo.reduce((s,x)=>s+x.val,0);
-  const totalNao      = grupoOut.nao.reduce((s,x)=>s+x.val,0);
-  const margem        = receita - totalVariavel;
-  const resultado     = margem  - totalFixo;
+  // Todas as categorias de saída já usadas (com total histórico)
+  const totCat = {};
+  (ctx.trans||[]).filter(t=>t.type==='saida').forEach(t=>{ const c=t.category||'Sem categoria'; totCat[c]=(totCat[c]||0)+t.amount; });
+  const todasCatsSaida = Object.keys(totCat).sort((a,b)=>a.localeCompare(b,'pt'));
 
-  // ── Todas as categorias de saída já usadas ────────────────────────────
-  const todasCatsSaida = [...new Set((ctx.trans||[]).filter(t=>t.type==='saida').map(t=>t.category||'Sem categoria'))].sort();
-
-  // Cores para tipos
-  const tipoCor   = { fixo:'#3b82f6', variavel:'#f59e0b', nao:'#9ca3af' };
-  const tipoLabel = { fixo:'Fixo', variavel:'Variável', nao:'Não classificado' };
-
-  const DRELine = ({label, value, bold, indent, color, subline, pctVal, pctRef, bg}) => (
+  // ── Componentes de linha ──────────────────────────────────────────────
+  const DRELine = ({label, value, bold, indent, color, subline, pctVal, pctRef, bg, sinal}) => (
     <div style={{display:'flex',alignItems:'center',padding:indent?'5px 12px 5px 28px':'7px 12px',
       background:bg||'transparent',borderRadius:bg?8:0,marginBottom:bg?6:0}}>
       <span style={{flex:1,fontSize:indent?13:14,fontWeight:bold?700:400,color:color||C.text2,fontStyle:subline?'italic':'normal'}}>
         {label}
       </span>
-      {pctVal!==undefined && pctRef &&
+      {pctVal!==undefined && pctRef ?
         <span style={{fontSize:12,color:C.text2,marginRight:12,minWidth:50,textAlign:'right'}}>
           {pct(pctVal, pctRef)}
-        </span>}
+        </span> : null}
       <span style={{fontSize:indent?13:bold?16:14,fontWeight:bold?700:500,color:color||C.text,minWidth:100,textAlign:'right'}}>
-        {R(value)}
+        {sinal||''}{R(value)}
       </span>
     </div>
   );
-
-  const Divider = ({dashed}) => (
-    <div style={{borderTop:`1px ${dashed?'dashed':'solid'} ${C.border}`,margin:'6px 0'}}/>
+  const Divider = ({dashed}) => <div style={{borderTop:`1px ${dashed?'dashed':'solid'} ${C.border}`,margin:'6px 0'}}/>;
+  const Secao = ({titulo, cor}) => (
+    <div style={{background:cor+'22',padding:'10px 12px 4px'}}>
+      <span style={{fontSize:11,fontWeight:700,color:cor,letterSpacing:1,textTransform:'uppercase'}}>{titulo}</span>
+    </div>
   );
+  const Vazio = ({txt}) => <p style={{margin:'8px 12px 8px 28px',color:C.text2,fontSize:12,fontStyle:'italic'}}>{txt}</p>;
+  const Nota = ({children, cor}) => (
+    <div style={{margin:'4px 12px 8px',padding:'8px 10px',borderRadius:8,background:(cor||'#f59e0b')+'18',fontSize:11.5,color:C.text2,lineHeight:1.45}}>{children}</div>
+  );
+  const Resultado = ({label, value}) => (
+    <DRELine label={label} value={value} bold color={value>=0?'#22c55e':'#ef4444'}
+      pctVal={value} pctRef={receita} bg={value>=0?'#22c55e18':'#ef444418'}/>
+  );
+  const linhas = arr => arr.map(({cat,val,provisao})=>
+    <DRELine key={cat} label={cat} value={val} indent pctVal={val} pctRef={receita} subline={provisao}/>);
+  const inputEstoque = {width:110,padding:'5px 8px',borderRadius:8,border:'1px solid '+C.border,background:'white',color:C.text,fontSize:13,fontFamily:'inherit',textAlign:'right'};
+  const cor = id => grupoInfo(id).cor;
 
   return (
     <div style={{paddingBottom:40}}>
@@ -3795,16 +3945,11 @@ function ContabilView({ ctx }) {
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
         <h2 style={{margin:0,fontSize:18,fontWeight:700,color:C.text}}>📊 Contábil</h2>
         <div style={{display:'flex',gap:6}}>
-          <button onClick={()=>setAba('dre')}
-            style={{padding:'6px 12px',borderRadius:8,border:'none',fontFamily:'inherit',fontSize:13,fontWeight:600,cursor:'pointer',
-              background:aba==='dre'?C.red:'transparent',color:aba==='dre'?'white':C.text2}}>
-            DRE
-          </button>
-          <button onClick={()=>setAba('classificar')}
-            style={{padding:'6px 12px',borderRadius:8,border:'none',fontFamily:'inherit',fontSize:13,fontWeight:600,cursor:'pointer',
-              background:aba==='classificar'?C.red:'transparent',color:aba==='classificar'?'white':C.text2}}>
-            ⚙️ Classificar
-          </button>
+          {[['dre','DRE'],['classificar','⚙️ Classificar']].map(([k,l])=>(
+            <button key={k} onClick={()=>setAba(k)}
+              style={{padding:'6px 12px',borderRadius:8,border:'none',fontFamily:'inherit',fontSize:13,fontWeight:600,cursor:'pointer',
+                background:aba===k?C.red:'transparent',color:aba===k?'white':C.text2}}>{l}</button>
+          ))}
         </div>
       </div>
 
@@ -3816,9 +3961,8 @@ function ContabilView({ ctx }) {
         <span style={{color:C.text2,fontSize:13}}>até</span>
         <input type="date" value={ate} onChange={e=>setAte(e.target.value)}
           style={{padding:'6px 10px',borderRadius:8,border:'1px solid '+C.border,background:'white',color:C.text,fontSize:13,fontFamily:'inherit'}}/>
-        {/* Atalhos de mês */}
         {[0,-1,-2].map(offset=>{
-          const d=new Date(); d.setMonth(d.getMonth()+offset);
+          const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()+offset);
           const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
           const ult=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();
           const mDe=key+'-01', mAte=key+'-'+String(ult).padStart(2,'0');
@@ -3835,75 +3979,128 @@ function ContabilView({ ctx }) {
       {/* ── DRE ── */}
       {aba==='dre' && (
         <div style={{background:'white',borderRadius:14,border:'1px solid '+C.border,overflow:'hidden'}}>
-          {/* Receita */}
-          <div style={{background:C.green+'22',padding:'10px 12px 4px'}}>
-            <span style={{fontSize:11,fontWeight:700,color:C.green,letterSpacing:1,textTransform:'uppercase'}}>Receita</span>
-          </div>
+          {/* Receita bruta */}
+          <Secao titulo="Receita bruta" cor={C.green}/>
           {transIn.length===0
-            ? <p style={{margin:'10px 12px',color:C.text2,fontSize:13}}>Nenhuma entrada no período.</p>
+            ? <Vazio txt="Nenhuma entrada no período."/>
             : Object.entries(recCats).sort((a,b)=>b[1]-a[1]).map(([c,v])=>
                 <DRELine key={c} label={c} value={v} indent pctVal={v} pctRef={receita}/>)}
           <Divider/>
           <DRELine label="(+) RECEITA BRUTA" value={receita} bold color={C.green}/>
-
           <Divider dashed/>
 
-          {/* Custos Variáveis */}
-          <div style={{background:'#f59e0b22',padding:'10px 12px 4px'}}>
-            <span style={{fontSize:11,fontWeight:700,color:'#f59e0b',letterSpacing:1,textTransform:'uppercase'}}>Custos Variáveis</span>
-          </div>
-          {grupoOut.variavel.length===0
-            ? <p style={{margin:'10px 12px',color:C.text2,fontSize:13,fontStyle:'italic'}}>Nenhuma categoria variável classificada para o período.</p>
-            : grupoOut.variavel.map(({cat,val})=>
-                <DRELine key={cat} label={cat} value={val} indent pctVal={val} pctRef={receita}/>)}
+          {/* Deduções */}
+          <Secao titulo="Deduções da receita" cor={cor('deducao')}/>
+          {deducoes.length===0 ? <Vazio txt="Nenhuma dedução no período."/> : linhas(deducoes)}
+          {!temImposto && receita>0 && (
+            <Nota cor="#dc2626">
+              {aliquota>0
+                ? <>Nenhum imposto sobre vendas lançado com competência neste período. Usei uma <strong>provisão de {aliquota.toLocaleString('pt-BR')}%</strong>. Ela some quando o DAS do mês for lançado com a competência certa.</>
+                : <>Nenhum imposto sobre vendas lançado com competência neste período. Lance o DAS informando o <strong>mês de competência</strong>, ou defina uma alíquota estimada em "⚙️ Classificar" para provisionar.</>}
+            </Nota>
+          )}
           <Divider/>
-          <DRELine label="(-) CUSTOS VARIÁVEIS" value={totalVariavel} bold color="#f59e0b"/>
-
+          <DRELine label="(−) DEDUÇÕES" value={totalDeducoes} bold color={cor('deducao')} pctVal={totalDeducoes} pctRef={receita}/>
+          <Resultado label="(=) RECEITA LÍQUIDA" value={receitaLiquida}/>
           <Divider dashed/>
 
-          {/* Margem de Contribuição */}
-          <DRELine label="(=) MARGEM DE CONTRIBUIÇÃO" value={margem} bold
-            color={margem>=0?'#22c55e':'#ef4444'}
-            pctVal={margem} pctRef={receita}
-            bg={margem>=0?'#22c55e18':'#ef444418'}/>
-
-          <Divider dashed/>
-
-          {/* Custos Fixos */}
-          <div style={{background:'#3b82f622',padding:'10px 12px 4px'}}>
-            <span style={{fontSize:11,fontWeight:700,color:'#3b82f6',letterSpacing:1,textTransform:'uppercase'}}>Custos Fixos</span>
-          </div>
-          {grupoOut.fixo.length===0
-            ? <p style={{margin:'10px 12px',color:C.text2,fontSize:13,fontStyle:'italic'}}>Nenhuma categoria fixa classificada para o período.</p>
-            : grupoOut.fixo.map(({cat,val})=>
-                <DRELine key={cat} label={cat} value={val} indent pctVal={val} pctRef={receita}/>)}
+          {/* CMV */}
+          <Secao titulo="CMV — insumos e embalagens" cor={cor('cmv')}/>
+          {G.cmv.length===0 ? <Vazio txt="Nenhuma compra de insumos/embalagens no período."/> : linhas(G.cmv)}
+          <DRELine label="Compras do período" value={compras} indent subline/>
+          {mesUnico ? (
+            <>
+              <div style={{display:'flex',alignItems:'center',padding:'5px 12px 5px 28px',gap:8}}>
+                <span style={{flex:1,fontSize:13,color:C.text2}}>(+) Estoque inicial (R$)</span>
+                <input key={'ei-'+mesUnico+'-'+(eiInformado==null?'':eiInformado)} type="number" inputMode="decimal" step="0.01"
+                  defaultValue={eiInformado==null?'':eiInformado}
+                  placeholder={eiAnterior!=null ? eiAnterior.toFixed(2) : '0,00'}
+                  onBlur={e=>salvarEstoque(mesUnico,'inicial',e.target.value)} style={inputEstoque}/>
+              </div>
+              <div style={{display:'flex',alignItems:'center',padding:'5px 12px 5px 28px',gap:8}}>
+                <span style={{flex:1,fontSize:13,color:C.text2}}>(−) Estoque final (R$)</span>
+                <input key={'ef-'+mesUnico+'-'+(estoqueFinal==null?'':estoqueFinal)} type="number" inputMode="decimal" step="0.01"
+                  defaultValue={estoqueFinal==null?'':estoqueFinal} placeholder="contagem do fim do mês"
+                  onBlur={e=>salvarEstoque(mesUnico,'final',e.target.value)} style={inputEstoque}/>
+              </div>
+            </>
+          ) : ajustaEstoque && (
+            <>
+              <DRELine label={`(+) Estoque inicial (${primeiro})`} value={estoqueInicial} indent/>
+              <DRELine label={`(−) Estoque final (${ultimo})`} value={estoqueFinal} indent/>
+            </>
+          )}
+          {!ajustaEstoque && (
+            <Nota cor={cor('cmv')}>
+              {mesUnico
+                ? <>Informe o <strong>valor em R$ do estoque</strong> de insumos e embalagens no início e no fim do mês (contagem × custo). Sem o estoque final, o CMV é igual às compras do mês. Se o estoque inicial ficar em branco, uso o estoque final do mês anterior.</>
+                : <>Selecione um único mês para informar os estoques. Sem o estoque final do último mês, o CMV é igual às compras do período.</>}
+            </Nota>
+          )}
           <Divider/>
-          <DRELine label="(-) CUSTOS FIXOS" value={totalFixo} bold color="#3b82f6"/>
-
+          <DRELine label="(−) CMV" value={cmv} bold color={cor('cmv')} pctVal={cmv} pctRef={receita}/>
           <Divider dashed/>
 
-          {/* Resultado */}
-          <DRELine label="(=) RESULTADO OPERACIONAL" value={resultado} bold
-            color={resultado>=0?'#22c55e':'#ef4444'}
-            pctVal={resultado} pctRef={receita}
-            bg={resultado>=0?'#22c55e18':'#ef444418'}/>
+          {/* Outros custos variáveis */}
+          <Secao titulo="Outros custos variáveis" cor={cor('variavel')}/>
+          {G.variavel.length===0 ? <Vazio txt="Nenhum custo variável no período."/> : linhas(G.variavel)}
+          <Divider/>
+          <DRELine label="(−) CUSTOS VARIÁVEIS" value={totalVariavel} bold color={cor('variavel')} pctVal={totalVariavel} pctRef={receita}/>
+          <Resultado label="(=) MARGEM DE CONTRIBUIÇÃO" value={margem}/>
+          <Divider dashed/>
 
-          {/* Não classificados (aviso) */}
-          {grupoOut.nao.length>0 && (
+          {/* Despesas fixas */}
+          <Secao titulo="Despesas fixas" cor={cor('fixo')}/>
+          {G.fixo.length===0 ? <Vazio txt="Nenhuma despesa fixa no período."/> : linhas(G.fixo)}
+          <Divider/>
+          <DRELine label="(−) DESPESAS FIXAS" value={totalFixo} bold color={cor('fixo')} pctVal={totalFixo} pctRef={receita}/>
+          <Divider dashed/>
+
+          {/* Pró-labore */}
+          <Secao titulo="Pró-labore / sócios" cor={cor('socios')}/>
+          {G.socios.length===0 ? <Vazio txt="Nenhum pró-labore no período."/> : linhas(G.socios)}
+          <Divider/>
+          <DRELine label="(−) PRÓ-LABORE" value={totalSocios} bold color={cor('socios')} pctVal={totalSocios} pctRef={receita}/>
+          <Resultado label="(=) EBITDA" value={ebitda}/>
+          <Divider dashed/>
+
+          {/* Depreciação */}
+          <div onClick={()=>depItens.length&&setVerDep(v=>!v)} style={{cursor:depItens.length?'pointer':'default'}}>
+            <DRELine label={`(−) DEPRECIAÇÃO${depItens.length?(verDep?' ▾':' ▸'):''}`} value={depreciacao} bold color={cor('investimento')} pctVal={depreciacao} pctRef={receita}/>
+          </div>
+          {verDep && depItens.map(({t,ini,mensal,valor})=>(
+            <DRELine key={t.id} label={`${t.description||t.category} · ${ini} · ${R(mensal)}/mês`} value={valor} indent subline/>
+          ))}
+          {verDep && <Nota cor={cor('investimento')}>Depreciação linear em {vidaAnos.toLocaleString('pt-BR')} anos ({vidaMeses} meses), a partir do mês da compra. Para mudar a vida útil, vá em "⚙️ Classificar".</Nota>}
+
+          {/* Resultado financeiro */}
+          {G.financeiro.length>0 && (<>
+            <Secao titulo="Resultado financeiro" cor={cor('financeiro')}/>
+            {linhas(G.financeiro)}
+          </>)}
+          <DRELine label="(−) RESULTADO FINANCEIRO" value={totalFinanceiro} bold color={cor('financeiro')} pctVal={totalFinanceiro} pctRef={receita}/>
+          <Divider dashed/>
+
+          <Resultado label="(=) LUCRO LÍQUIDO" value={lucroLiquido}/>
+
+          {/* Fora do DRE */}
+          {(G.investimento.length>0 || G.retirada.length>0 || G.nao.length>0) && (
             <>
               <Divider dashed/>
-              <div style={{padding:'8px 12px 4px',background:'#9ca3af18'}}>
-                <span style={{fontSize:11,fontWeight:700,color:C.text2,letterSpacing:1,textTransform:'uppercase'}}>
-                  ⚠️ Não classificados (fora do DRE)
-                </span>
-              </div>
-              {grupoOut.nao.map(({cat,val})=>
-                <DRELine key={cat} label={cat} value={val} indent color={C.text2}/>)}
-              <div style={{padding:'4px 12px 10px'}}>
-                <span style={{fontSize:11,color:C.text2}}>
-                  Classifique essas categorias em "⚙️ Classificar" para incluí-las no DRE.
-                </span>
-              </div>
+              <Secao titulo="Fora do DRE (apenas informativo)" cor="#6b7280"/>
+              {G.investimento.length>0 && <>
+                <DRELine label="Investimentos no período (viram depreciação)" value={soma(G.investimento)} color={cor('investimento')}/>
+                {G.investimento.map(({cat,val})=><DRELine key={'i'+cat} label={cat} value={val} indent color={C.text2}/>)}
+              </>}
+              {G.retirada.length>0 && <>
+                <DRELine label="Distribuição de lucros" value={soma(G.retirada)} color={cor('retirada')}/>
+                {G.retirada.map(({cat,val})=><DRELine key={'r'+cat} label={cat} value={val} indent color={C.text2}/>)}
+              </>}
+              {G.nao.length>0 && <>
+                <DRELine label="⚠️ Não classificados" value={soma(G.nao)} color={C.text2}/>
+                {G.nao.map(({cat,val})=><DRELine key={'n'+cat} label={cat} value={val} indent color={C.text2}/>)}
+                <Nota cor="#9ca3af">Classifique essas categorias em "⚙️ Classificar" para incluí-las no DRE.</Nota>
+              </>}
             </>
           )}
         </div>
@@ -3912,43 +4109,58 @@ function ContabilView({ ctx }) {
       {/* ── Classificar Categorias ── */}
       {aba==='classificar' && (
         <div>
-          <p style={{fontSize:13,color:C.text2,marginTop:0,marginBottom:14}}>
-            Clique em cada categoria para alternar entre <strong>Fixo</strong>, <strong>Variável</strong> e <strong>Não classificado</strong>. A classificação é salva automaticamente.
+          <p style={{fontSize:13,color:C.text2,marginTop:0,marginBottom:10}}>
+            Escolha o grupo do DRE de cada categoria de saída. A classificação é salva automaticamente.
           </p>
-          {todasCatsSaida.length===0 && (
-            <p style={{color:C.text2,fontSize:13}}>Nenhuma categoria de saída encontrada.</p>
-          )}
+          <div style={{background:'white',border:'1px solid '+C.border,borderRadius:12,padding:'10px 12px',marginBottom:14}}>
+            {DRE_GRUPOS.map(g=>(
+              <div key={g.id} style={{display:'flex',gap:8,alignItems:'baseline',padding:'3px 0'}}>
+                <span style={{width:9,height:9,borderRadius:'50%',background:g.cor,flexShrink:0,display:'inline-block'}}/>
+                <span style={{fontSize:12,color:C.text2,lineHeight:1.4}}><strong style={{color:C.text}}>{g.lbl}:</strong> {g.desc}</span>
+              </div>
+            ))}
+          </div>
+          {todasCatsSaida.length===0 && <p style={{color:C.text2,fontSize:13}}>Nenhuma categoria de saída encontrada.</p>}
           <div style={{display:'flex',flexDirection:'column',gap:8}}>
             {todasCatsSaida.map(cat=>{
-              const tipo = ctx.catTipo[cat] || 'nao';
-              const nextTipo = tipo==='nao'?'fixo':tipo==='fixo'?'variavel':'nao';
-              const cor = tipoCor[tipo];
+              const g = grupoInfo(grupoDe(cat));
               return (
-                <div key={cat} onClick={()=>ctx.setCatTipo(prev=>({...prev,[cat]:nextTipo}))}
-                  style={{display:'flex',alignItems:'center',justifyContent:'space-between',
-                    padding:'12px 14px',borderRadius:10,border:'2px solid '+cor,
-                    background:cor+'18',cursor:'pointer',transition:'all 0.15s'}}>
-                  <span style={{fontSize:14,fontWeight:500,color:C.text}}>{cat}</span>
-                  <span style={{fontSize:12,fontWeight:700,color:cor,background:cor+'30',
-                    padding:'3px 10px',borderRadius:20}}>
-                    {tipoLabel[tipo]}
-                  </span>
+                <div key={cat} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,
+                  padding:'10px 12px',borderRadius:10,border:'2px solid '+g.cor,background:g.cor+'12'}}>
+                  <div style={{minWidth:0,flex:1}}>
+                    <div style={{fontSize:14,fontWeight:600,color:C.text,overflowWrap:'anywhere'}}>{cat}</div>
+                    <div style={{fontSize:11,color:C.text2}}>{R(totCat[cat])} no histórico</div>
+                  </div>
+                  <select value={g.id} onChange={e=>{ const v=e.target.value; ctx.setCatTipo(prev=>({...prev,[cat]:v})); }}
+                    style={{padding:'6px 8px',borderRadius:8,border:'1px solid '+g.cor,background:'white',color:g.cor,
+                      fontSize:12,fontWeight:700,fontFamily:'inherit',maxWidth:150,flexShrink:0}}>
+                    {DRE_GRUPOS.map(o=><option key={o.id} value={o.id}>{o.lbl}</option>)}
+                  </select>
                 </div>
               );
             })}
           </div>
-          {todasCatsSaida.length>0 && (
-            <p style={{fontSize:12,color:C.text2,marginTop:12,textAlign:'center'}}>
-              Toque para alternar: Não classificado → Fixo → Variável → Não classificado
-            </p>
-          )}
+
+          {/* Parâmetros */}
+          <div style={{background:'white',border:'1px solid '+C.border,borderRadius:12,padding:'12px 14px',marginTop:18}}>
+            <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:10}}>Parâmetros do DRE</div>
+            <label className="label">Vida útil do imobilizado (anos)</label>
+            <input className="input" type="number" inputMode="decimal" min="1" step="1"
+              key={'vu-'+(cfg.vidaUtilAnos==null?'':cfg.vidaUtilAnos)} defaultValue={cfg.vidaUtilAnos==null?'':cfg.vidaUtilAnos} placeholder="10"
+              onBlur={e=>{ const n=toNum(e.target.value); setCfg(p=>({...p, vidaUtilAnos: n&&n>0?n:null})); }} style={{marginBottom:4}}/>
+            <div style={{fontSize:11,color:C.text2,marginBottom:12}}>Padrão de 10 anos para máquinas e equipamentos. A depreciação é linear a partir do mês da compra.</div>
+            <label className="label">Alíquota estimada de imposto sobre vendas (%)</label>
+            <input className="input" type="number" inputMode="decimal" min="0" step="0.01"
+              key={'al-'+(cfg.aliquotaImposto==null?'':cfg.aliquotaImposto)} defaultValue={cfg.aliquotaImposto==null?'':cfg.aliquotaImposto} placeholder="ex.: 6"
+              onBlur={e=>{ const n=toNum(e.target.value); setCfg(p=>({...p, aliquotaImposto: n&&n>0?n:null})); }} style={{marginBottom:4}}/>
+            <div style={{fontSize:11,color:C.text2}}>Opcional. Usada só para provisionar o imposto nos meses em que o DAS ainda não foi lançado com competência. Confirme a alíquota efetiva com o seu contador.</div>
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-// ── RELATÓRIOS VIEW ────────────────────────────────────────────────────────
 function RelatoriosView({ ctx }) {
   const [relDe,  setRelDe]  = useState('');
   const [relAte, setRelAte] = useState('');
@@ -5531,6 +5743,7 @@ function ContaModal({ ctx, initTipo, conta }) {
   const [valor,       setValor]       = useState(conta?.valor ? String(conta.valor) : '');
   const [vencimento,  setVencimento]  = useState(conta?.vencimento || today());
   const [categoria,   setCategoria]   = useState(conta?.categoria || '');
+  const [competencia, setCompetencia] = useState(conta?.competencia || ''); // 'AAAA-MM' — mês a que a despesa se refere (DRE)
   const [cliente,     setCliente]     = useState(conta?.cliente || '');
   const [notaFiscal,  setNotaFiscal]  = useState(conta?.notaFiscal || '');
   const [novaCat,     setNovaCat]     = useState('');
@@ -5650,6 +5863,7 @@ function ContaModal({ ctx, initTipo, conta }) {
         descricao: descricao.trim() || itensValidos.map(it=>it.nome.trim()).join(' + '),
         valor: totalItens,
         vencimento, categoria:categoria||cats[0],
+        competencia: (tipo==='pagar' && competencia) ? competencia : null,
         cliente:cliente.trim(), notaFiscal:notaFiscal.trim(),
         codigoBarras: codigoBarras.trim(),
         quantidade: null, unidade: null,
@@ -5667,6 +5881,7 @@ function ContaModal({ ctx, initTipo, conta }) {
       tipo, descricao:descricao.trim(),
       valor: showItensV ? totalVendidos : (parseFloat(valor.replace(',','.'))||0),
       vencimento, categoria:categoria||cats[0],
+      competencia: (tipo==='pagar' && competencia) ? competencia : null,
       cliente:cliente.trim(), notaFiscal:notaFiscal.trim(),
       codigoBarras: codigoBarras.trim(),
       quantidade: quantidade ? parseFloat(quantidade.replace(',','.')) : null,
@@ -5817,6 +6032,19 @@ function ContaModal({ ctx, initTipo, conta }) {
             <input className="input" type="date" value={vencimento} onChange={e=>setVencimento(e.target.value)}/>
           </div>
         </div>
+
+        {tipo==='pagar' && (
+          <div style={{marginBottom:14}}>
+            <label className="label">Competência (opcional)</label>
+            <div style={{display:'flex',gap:6,alignItems:'center'}}>
+              <input className="input" type="month" value={competencia} onChange={e=>setCompetencia(e.target.value)} style={{flex:1,marginBottom:0}}/>
+              {competencia && <button onClick={()=>setCompetencia('')} style={{background:'transparent',border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 10px',cursor:'pointer',color:C.text2,fontSize:12,fontFamily:'inherit'}}>Limpar</button>}
+            </div>
+            <div style={{fontSize:11,color:C.text2,marginTop:4,lineHeight:1.4}}>
+              Mês a que a despesa se refere, para o DRE. Ex.: o DAS de outubro, pago em novembro, tem competência outubro. Em branco, o DRE usa a data do pagamento.
+            </div>
+          </div>
+        )}
 
         {tipo==='pagar' && !multiMode && (
           <div style={{marginBottom:14}}>
